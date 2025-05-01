@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>770842779083-na1h4sh66qu5jja13jubk0bl6v7jllpl.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.770842779083-na1h4sh66qu5jja13jubk0bl6v7jllpl</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>770842779083-61t52u0o1207o5gl8229guhjduknv7eu.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyD7re2GoMGi0CxtfQxHxG1Qf7KdxAjN-j4</string>
+	<key>GCM_SENDER_ID</key>
+	<string>770842779083</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.stitchup.dartnew</string>
+	<key>PROJECT_ID</key>
+	<string>stitchupapp</string>
+	<key>STORAGE_BUCKET</key>
+	<string>stitchupapp.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:770842779083:ios:3b9498dd295b370325aa4e</string>
+</dict>
+</plist>

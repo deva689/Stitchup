@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "770842779083",
+    "project_id": "stitchupapp",
+    "storage_bucket": "stitchupapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770842779083:android:fd4715c372ad490125aa4e",
+        "android_client_info": {
+          "package_name": "com.stitchup.dartnew"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "770842779083-hc7pfqaru0am8443q0opdfun9f04m1gm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.stitchup.dartnew",
+            "certificate_hash": "1fffc0ad948f22cfe4d13e42f962f5d26ade3ee3"
+          }
+        },
+        {
+          "client_id": "770842779083-vu04i4ftdgphuhqkic5lidjjoqclf9t3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNTpczuzKEpycgeuazYxVeynpkeLZV7Io"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "770842779083-vu04i4ftdgphuhqkic5lidjjoqclf9t3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "770842779083-na1h4sh66qu5jja13jubk0bl6v7jllpl.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.stitchup.dartnew"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

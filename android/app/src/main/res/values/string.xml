@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+   <resources>
+    <string name="app_name">stitchup</string>
+    <string name="facebook_app_id">2651144851754877</string>
+    <string name="fb_login_protocol_scheme">fb2651144851754877</string>
+    <string name="facebook_client_token">a3c052c5ce88a1e38fef2a3511b0317c</string>
+</resources>
+
+
