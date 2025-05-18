@@ -16,6 +16,10 @@ class ContactsOnStitchUp extends StatefulWidget {
 class _ContactsOnStitchUpState extends State<ContactsOnStitchUp> {
   List<Map<String, dynamic>> matchedUsers = [];
   bool isLoading = true;
+  final currentUser = FirebaseAuth.instance.currentUser;
+  String senderName = '';
+  String senderId = '';
+  Map<String, dynamic> userData = {};
 
   @override
   void initState() {
@@ -172,6 +176,7 @@ class _ContactsOnStitchUpState extends State<ContactsOnStitchUp> {
                               receiverId: receiverId,
                               receiverName: receiverName,
                               profileUrl: profileUrl,
+                              senderName: userData['name'] ?? 'Unknown',
                             ),
                           ),
                         );

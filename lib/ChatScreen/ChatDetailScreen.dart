@@ -1,13 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-class ChatDetailScreen extends StatefulWidget {
+class ChatPageScreen extends StatefulWidget {
   final String currentUserId;
   final String receiverUserId;
   final String receiverName;
   final String? receiverPhotoUrl;
 
-  const ChatDetailScreen({
+  const ChatPageScreen({
     super.key,
     required this.currentUserId,
     required this.receiverUserId,
@@ -16,10 +16,10 @@ class ChatDetailScreen extends StatefulWidget {
   });
 
   @override
-  State<ChatDetailScreen> createState() => _ChatDetailScreenState();
+  State<ChatPageScreen> createState() => _ChatPageScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> {
+class _ChatPageScreenState extends State<ChatPageScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 

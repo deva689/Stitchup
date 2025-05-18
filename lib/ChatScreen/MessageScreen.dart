@@ -1,16 +1,21 @@
-// Full WhatsApp-like chat screen with Voice Notes, Emoji Reactions, and Recording Indicator
-
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/message_model.dart';
+
+// Initialize a FirebaseFunctions instance
+final FirebaseFunctions functions = FirebaseFunctions.instance;
 
 class Messagescreen extends StatefulWidget {
   final String chatId;
@@ -19,6 +24,7 @@ class Messagescreen extends StatefulWidget {
   final String profileUrl;
   final String? voiceUrl; // nullable
   final Map<String, String>? reactions; // for emoji reactions
+  final String senderName; // Add this!
 
   const Messagescreen({
     super.key,
@@ -28,6 +34,7 @@ class Messagescreen extends StatefulWidget {
     required this.profileUrl,
     this.voiceUrl,
     this.reactions,
+    required this.senderName, // Add this!
   });
 
   @override
@@ -52,10 +59,28 @@ class _MessagescreenState extends State<Messagescreen>
   @override
   void initState() {
     super.initState();
+
+    // Get current user ID
     currentUserId = _auth.currentUser!.uid;
+
+    // Add lifecycle observer if needed
     WidgetsBinding.instance.addObserver(this);
+
+    // Set user online status
     _setOnline();
+
+    // Mark messages as delivered
     _markMessagesAsDelivered();
+
+    // Save the device token for push notifications
+    _saveDeviceToken();
+
+    // Listen for FCM token refresh and update Firestore
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+      _firestore.collection('users').doc(currentUserId).update({
+        'fcmToken': newToken,
+      });
+    });
   }
 
   @override
@@ -130,36 +155,106 @@ class _MessagescreenState extends State<Messagescreen>
     }
   }
 
-  void _sendMessage(String text) async {
+  Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    final message = MessageModel(
-      senderId: currentUserId,
-      receiverId: widget.receiverId,
-      message: text.trim(),
-      timestamp: DateTime.now(),
-      isDelivered: false,
-      isRead: false,
-    );
+    final trimmedText = text.trim();
+    final currentUserId = FirebaseAuth.instance.currentUser!.uid;
+    final timestamp = FieldValue.serverTimestamp();
 
-    await _firestore
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .add(message.toMap());
+    try {
+      // 1. Save message to Firestore
+      final messageRef = _firestore
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages')
+          .doc();
 
-    _messageController.clear();
-    _updateTypingStatus('');
+      await messageRef.set({
+        'text': trimmedText,
+        'senderId': currentUserId,
+        'receiverId': widget.receiverId,
+        'message': trimmedText,
+        'timestamp': timestamp,
+        'seenBy': [currentUserId],
+        'isRead': false,
+        'isDelivered': true,
+        'reactions': {}, // Initialize empty reactions map
+      });
 
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+      // 2. Update lastMessage and unreadCounts in chat doc
+      final chatDoc = _firestore.collection('chats').doc(widget.chatId);
+      final chatSnapshot = await chatDoc.get();
+
+      if (chatSnapshot.exists) {
+        final chatData = chatSnapshot.data()!;
+        final participants = List<String>.from(chatData['participants'] ?? []);
+        final Map<String, int> newUnreadCounts = {};
+
+        for (final uid in participants) {
+          newUnreadCounts[uid] = uid == currentUserId
+              ? 0
+              : (chatData['unreadCounts']?[uid] ?? 0) + 1;
+        }
+
+        await chatDoc.update({
+          'lastMessage': {
+            'text': trimmedText,
+            'timestamp': timestamp,
+            'senderId': currentUserId,
+            'seenBy': [currentUserId],
+          },
+          'unreadCounts': newUnreadCounts,
+        });
+      }
+
+      // 3. Send Push Notification to receiver if token exists
+      final receiverDoc =
+          await _firestore.collection('users').doc(widget.receiverId).get();
+      final fcmToken = receiverDoc.data()?['fcmToken'];
+
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        await sendPushNotification(
+          token: fcmToken,
+          title: widget.senderName ?? "New Message",
+          body: trimmedText,
         );
       }
-    });
+
+      // 4. Clear input and reset typing status
+      _messageController.clear();
+      _updateTypingStatus('');
+
+      // 5. Scroll chat list to bottom smoothly
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint("Error sending message: $e");
+      // Optionally, show a SnackBar or Toast for the error
+    }
+  }
+
+  Future<void> _saveDeviceToken() async {
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null && currentUserId != null) {
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+        _firestore.collection('users').doc(currentUserId).update({
+          'fcmToken': newToken,
+        });
+      });
+      await _firestore.collection('users').doc(currentUserId).update({
+        'fcmToken': token,
+      });
+    } else {
+      debugPrint("❌ Failed to get FCM token");
+    }
   }
 
   Future<void> _startRecording() async {
@@ -267,6 +362,28 @@ class _MessagescreenState extends State<Messagescreen>
       }
       messageRef.update({'reactions': reactions});
     });
+  }
+
+  Future<void> sendPushNotification({
+    required String token,
+    required String title,
+    required String body,
+  }) async {
+    try {
+      final callable = functions.httpsCallable('sendPushNotification');
+      final result = await callable.call(<String, dynamic>{
+        'token': token,
+        'title': title,
+        'body': body,
+        'chatId': widget.chatId,
+      });
+
+      if (!(result.data['success'] as bool)) {
+        debugPrint('FCM Function error: ${result.data['error']}');
+      }
+    } catch (e) {
+      debugPrint('Error calling cloud function: $e');
+    }
   }
 
   @override

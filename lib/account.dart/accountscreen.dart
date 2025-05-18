@@ -13,6 +13,7 @@ import 'package:stitchup/home.dart/homepage.dart';
 import 'package:stitchup/login.dart/login.dart';
 import 'package:stitchup/orderscreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stitchup/widgets/MyStatusScreen.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -24,9 +25,19 @@ class AccountScreen extends StatefulWidget {
 class _AccountScreenState extends State<AccountScreen> {
   String? profileImageUrl;
   File? localPreviewFile;
-
+  List<Map<String, dynamic>> contactsWithStories = [];
+  bool isUploading = false;
+  double uploadProgress = 0.0;
+  List<String> yourFetchedContactUIDsFromFirestore = []; // your list of UIDs
+  bool hasUploadedStory = false;
+  String? myPhotoUrl;
   bool isImageReady = false;
   final ImagePicker picker = ImagePicker();
+  List<Map<String, dynamic>> stories = [];
+  bool isStoryLoading = false;
+  bool isStoryUploading = false;
+  Map<String, String> localContactNames = {};
+  List<QueryDocumentSnapshot> chatDocs = []; // declared at top of the widget
 
   User? user; // 👈 This is needed!
 
@@ -172,6 +183,18 @@ class _AccountScreenState extends State<AccountScreen> {
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
+  }
+
+  void openStoryViewer(String userId) {
+    final hasStory = contactsWithStories.any((s) => s['userId'] == userId);
+    if (hasStory) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MyStatusScreen(userId: userId),
+        ),
+      );
+    }
   }
 
   @override
@@ -327,14 +350,27 @@ class _AccountScreenState extends State<AccountScreen> {
                   MaterialPageRoute(builder: (context) => const Homepage()));
               break;
             case 1:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatScreen(
-                    currentUserId: FirebaseAuth.instance.currentUser!.uid,
+              Future.delayed(Duration(milliseconds: 10), () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatScreen(
+                      currentUserId: user!.uid,
+                      contactsWithStories: contactsWithStories,
+                      localPreviewFile: localPreviewFile,
+                      profileImageUrl: profileImageUrl,
+                      isUploading: isUploading,
+                      uploadProgress: uploadProgress,
+                      contactUIDs: yourFetchedContactUIDsFromFirestore,
+                      stories: stories,
+                      onStoryTap: (userId) => openStoryViewer(userId),
+                      localContactNames:
+                          localContactNames, // make sure this is defined
+                      chatDocs: chatDocs, // ✅ you must pass this
+                    ),
                   ),
-                ),
-              );
+                );
+              });
 
               break;
             case 2:

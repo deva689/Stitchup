@@ -12,7 +12,23 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://www.jitpack.io") }
+        maven { url = uri("https://www.arthenica.com/maven") }
         gradlePluginPortal()
+        // ✅ Add Flutter’s artifact repository
+        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)  // ✅ Safer mode to let project repositories work
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://www.jitpack.io") }
+        maven { url = uri("https://www.arthenica.com/maven") }
+        // ✅ Again, include Flutter’s artifact repository here
+        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
     }
 }
 

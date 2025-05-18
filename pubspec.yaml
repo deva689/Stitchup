@@ -18,7 +18,7 @@ dependencies:
   animated_text_kit: ^4.2.3
   emoji_picker_flutter: ^4.3.0
   cached_network_image: ^3.4.1
-  story_view: ^0.16.5
+  dotted_border: ^2.1.0
 
   # Firebase
   firebase_core: ^3.12.1
@@ -28,10 +28,11 @@ dependencies:
   firebase_analytics: ^11.4.5
   firebase_app_check: ^0.3.2+5
   firebase_messaging: ^15.2.5
+  photo_manager: ^3.6.4
 
   # Auth & Social Login
   google_sign_in: ^6.3.0
-  flutter_facebook_auth: ^6.1.1
+  flutter_facebook_auth: ^7.1.2
 
   # Image & File
   image_picker: ^1.1.2
@@ -41,7 +42,7 @@ dependencies:
   path_provider: ^2.1.5
 
   # Location & Maps
-  geolocator: ^13.0.4
+  geolocator: ^14.0.0
   geocoding: ^3.0.0
   google_maps_flutter: ^2.5.3
   flutter_google_places_hoc081098: 2.0.0-beta.1
@@ -77,9 +78,15 @@ dependencies:
   flutter_svg: ^2.1.0
   flutter_emoji: ^2.5.1
   video_editor: ^3.0.0
-  video_trimmer: ^4.0.2
+  video_trimmer: ^5.0.0
   firebase_performance: ^0.10.1+5
   flutter_colorpicker: ^1.1.0
+  just_audio: ^0.10.2
+  path: ^1.9.1
+  story_view: ^0.16.5
+  flutter_riverpod: ^2.6.1
+  share_plus: ^11.0.0
+  cloud_functions: ^5.5.0
 
 dev_dependencies:
   flutter_lints: ^5.0.0
@@ -101,3 +108,4 @@ flutter:
     - family: PlayfairDisplaySC
       fonts:
         - asset: assets/fonts/Playfair_Display_SC/PlayfairDisplaySC-Regular.ttf
+

@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:stitchup/ChatScreen/ChatScreen.dart';
 import 'package:stitchup/TRNdX/TRNDX.dart';
 import 'package:stitchup/account.dart/accountscreen.dart';
 
@@ -517,9 +516,7 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => ChatScreen(
-                  currentUserId: FirebaseAuth.instance.currentUser!.uid,
-                ),
+                builder: (context) => Placeholder(),
               ),
             );
           } else if (index == 2) {

@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.stitchup.dartnew"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
@@ -83,4 +83,7 @@ dependencies {
 
     // ✅ Facebook SDK for login/integration
     implementation("com.facebook.android:facebook-android-sdk:16.3.0")
+
+    implementation ("com.google.firebase:firebase-appcheck-playintegrity")
+
 }

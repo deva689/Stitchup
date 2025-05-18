@@ -7,8 +7,8 @@ class MessageModel {
   final DateTime timestamp;
   final bool isDelivered;
   final bool isRead;
-  final String? voiceUrl; // ✅ for voice messages
-  final Map<String, String>? reactions; // ✅ for emoji reactions
+  final String? voiceUrl; // For voice messages
+  final Map<String, String>? reactions; // UID → Emoji map
 
   MessageModel({
     required this.senderId,
@@ -21,13 +21,15 @@ class MessageModel {
     this.reactions,
   });
 
-  /// ✅ Create model from Firestore map
+  /// ✅ From Firestore document
   factory MessageModel.fromMap(Map<String, dynamic> map) {
     return MessageModel(
-      senderId: map['senderId'],
-      receiverId: map['receiverId'],
+      senderId: map['senderId'] ?? '',
+      receiverId: map['receiverId'] ?? '',
       message: map['message'] ?? '',
-      timestamp: (map['timestamp'] as Timestamp).toDate(),
+      timestamp: map['timestamp'] != null
+          ? (map['timestamp'] as Timestamp).toDate()
+          : DateTime.now(), // fallback if null
       isDelivered: map['isDelivered'] ?? false,
       isRead: map['isRead'] ?? false,
       voiceUrl: map['voiceUrl'],
@@ -37,13 +39,13 @@ class MessageModel {
     );
   }
 
-  /// ✅ Convert model to Firestore map
+  /// ✅ To Firestore document
   Map<String, dynamic> toMap() {
     return {
       'senderId': senderId,
       'receiverId': receiverId,
       'message': message,
-      'timestamp': timestamp,
+      'timestamp': Timestamp.fromDate(timestamp),
       'isDelivered': isDelivered,
       'isRead': isRead,
       'voiceUrl': voiceUrl,
@@ -51,7 +53,7 @@ class MessageModel {
     };
   }
 
-  /// ✅ Create updated copy
+  /// ✅ Create modified copy
   MessageModel copyWith({
     String? senderId,
     String? receiverId,
@@ -74,7 +76,7 @@ class MessageModel {
     );
   }
 
-  /// ✅ Debug print
+  /// ✅ For debugging
   @override
   String toString() {
     return 'MessageModel(senderId: $senderId, receiverId: $receiverId, message: $message, '

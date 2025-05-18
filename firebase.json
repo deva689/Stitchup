@@ -1,1 +1,43 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"stitchupapp","appId":"1:770842779083:android:fd4715c372ad490125aa4e","fileOutput":"android/app/google-services.json"}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "stitchupapp",
+          "appId": "1:770842779083:android:fd4715c372ad490125aa4e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    },
+    {
+      "source": "stitchupapp",
+      "codebase": "functions",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}

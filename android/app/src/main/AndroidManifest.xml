@@ -59,9 +59,9 @@
             android:name="flutterEmbedding"
             android:value="2"/>
 
-        <meta-data
+        <!-- <meta-data
            android:name="firebase_performance_logcat_enabled"
-           android:value="true" />
+           android:value="true" /> -->
 
         <!-- Firebase Messaging: This is all you need for FCM -->
         <service
@@ -80,7 +80,9 @@
             android:name="com.yalantis.ucrop.UCropActivity"
             android:exported="false"
             android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/UCropActivityTheme"/>
+            
 
         <!-- Main Activity -->
         <activity

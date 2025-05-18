@@ -1,21 +1,30 @@
 import 'dart:io';
+import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:stitchup/widgets/emoji_overlay.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:stitchup/models/buildStatusData.dart';
+import 'package:stitchup/models/emoji_overlay.dart';
 
 class StoryEditorScreen extends StatefulWidget {
   final File image;
-  final File file;
+  final File filePath;
   final bool isVideo;
   final String currentUserId;
 
   const StoryEditorScreen({
     super.key,
-    required this.file,
+    required this.filePath,
     required this.isVideo,
     required this.currentUserId,
     required this.image,
@@ -39,12 +48,152 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   bool isSaved = false;
   bool isEditingEmoji = false; // 🆕
   bool isMovingEmoji = false; // 🔥 true => only emoji+delete icon show
+  List<Map<String, dynamic>> matchedUsers = [];
+  bool isLoading = true;
+  bool highlightMode = false; // ✅ Correct: false means highlight is off
 
-  void _openTextEditor() async {
-    await Navigator.push(
+  File? bgImage; // this is in your state
+  File? selectedFile; // For image or video file
+
+  String selectedFont = 'Roboto'; // Default font name
+  TextAlign textAlign = TextAlign.center;
+  Color highlightColor = Colors.transparent;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    selectedFile = widget.filePath;
+    fetchMatchedContacts();
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  void _openTextEditor(File imageFile) async {
+    final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const TextEditorScreen()),
+      MaterialPageRoute(
+        builder: (context) => TextEditorScreen(bgImage: imageFile),
+      ),
     );
+
+    if (result != null) {
+      final String text = result['text'] ?? '';
+      final Color textColor = result['textColor'] ?? Colors.white;
+      final String fontFamily = result['fontFamily'] ?? 'Roboto';
+      final int alignIndex = result['textAlign'] ?? TextAlign.center.index;
+      final TextAlign align = result['textAlign'] ?? TextAlign.center;
+      final int highlightMode = result['highlightMode'] ?? 0;
+      final Color highlightColor =
+          Color(result['highlightColor'] ?? Colors.transparent.value);
+
+      setState(() {
+        overlays.add(
+          DraggableResizableText(
+            text: text,
+            textColor: textColor,
+            fontFamily: fontFamily,
+            textAlign: textAlign,
+            highlightMode: highlightMode,
+            highlightColor: highlightColor,
+          ),
+        );
+      });
+    }
+  }
+
+  String normalizePhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 10 ? digits.substring(digits.length - 10) : '';
+  }
+
+  Future<List<String>> getLocalContactNumbers() async {
+    Set<String> phoneSet = {};
+
+    if (!await Permission.contacts.isGranted) {
+      final result = await Permission.contacts.request();
+      if (!result.isGranted) return [];
+    }
+
+    try {
+      final hasPermission = await FlutterContacts.requestPermission();
+      if (!hasPermission) return [];
+
+      final contacts = await FlutterContacts.getContacts(withProperties: true);
+
+      for (var contact in contacts) {
+        for (var phone in contact.phones) {
+          final normalized = normalizePhone(phone.number);
+          if (normalized.isNotEmpty) {
+            phoneSet.add(normalized);
+          }
+        }
+      }
+
+      return phoneSet.toList();
+    } catch (e) {
+      debugPrint("❌ Error getting contacts: $e");
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getMatchedUsers(
+      List<String> localPhones) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return [];
+
+    final currentUserPhone = normalizePhone(currentUser.phoneNumber ?? '');
+    List<Map<String, dynamic>> matched = [];
+
+    final snapshot = await FirebaseFirestore.instance.collection('users').get();
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final uid = doc.id;
+
+      final firestorePhone =
+          normalizePhone(data['phone'] ?? data['normalizedPhone'] ?? '');
+      if (firestorePhone.isEmpty || firestorePhone == currentUserPhone) {
+        continue;
+      }
+
+      if (localPhones.contains(firestorePhone)) {
+        matched.add({
+          'uid': uid,
+          'name': data['name'] ?? 'Unknown',
+          'phone': firestorePhone,
+          'photo': data['profileUrl'] ?? '',
+          'isOnline': data['isOnline'] ?? false,
+          'lastSeen': data['lastSeen'],
+          'isTypingTo': data['isTypingTo'] ?? '',
+        });
+      }
+    }
+
+    return matched;
+  }
+
+  Future<void> fetchMatchedContacts() async {
+    if (!mounted) return;
+    setState(() => isLoading = true);
+
+    final localNumbers = await getLocalContactNumbers();
+    final users = await getMatchedUsers(localNumbers);
+
+    if (!mounted) return; // <-- check again before calling setState
+
+    setState(() {
+      matchedUsers = users;
+      isLoading = false;
+    });
+  }
+
+  String generateChatId(String id1, String id2) {
+    return id1.hashCode <= id2.hashCode ? '${id1}_$id2' : '${id2}_$id1';
   }
 
   void _addEmojiOverlay(String emoji) {
@@ -76,11 +225,24 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     setState(() {});
   }
 
-  Future<void> _pickMusic() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (result != null) {
+  // void _pickMusic() async {
+  //   final selectedAudioUrl = await Navigator.push(
+  //     context,
+  //     MaterialPageRoute(builder: (_) => PixabayAudioListScreen()),
+  //   );
+
+  //   if (selectedAudioUrl != null) {
+  //     // Use the audio URL, for example:
+  //     print('Selected audio URL: $selectedAudioUrl');
+  //     // You can set it to a variable or pass it to a player
+  //   }
+  // }
+
+  Future<void> pickFile() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked != null) {
       setState(() {
-        selectedMusic = result.files.single.name;
+        selectedFile = File(picked.path);
       });
     }
   }
@@ -359,12 +521,89 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                     ),
                     child: Center(
                       child: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white),
-                        onPressed: () {
-                          // After saving story / uploading / anything
-                          Navigator.pop(context); // Close editor
-                        },
-                      ),
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          onPressed: () async {
+                            if (selectedFile == null) return;
+
+                            Navigator.of(context)
+                                .pop(); // Immediately pop the screen
+
+                            try {
+                              final uid =
+                                  FirebaseAuth.instance.currentUser!.uid;
+
+                              final userDocSnapshot = await FirebaseFirestore
+                                  .instance
+                                  .collection('users')
+                                  .doc(uid)
+                                  .get();
+
+                              final userData = userDocSnapshot.data();
+                              if (userData == null) {
+                                throw Exception("User not found");
+                              }
+
+                              final extension =
+                                  path.extension(selectedFile!.path);
+                              final ref = FirebaseStorage.instance
+                                  .ref('status')
+                                  .child(uid)
+                                  .child(
+                                      '${DateTime.now().millisecondsSinceEpoch}$extension');
+
+                              await ref.putFile(selectedFile!);
+                              final url = await ref.getDownloadURL();
+
+                              final localNumbers =
+                                  await getLocalContactNumbers();
+                              final matchedUsers =
+                                  await getMatchedUsers(localNumbers);
+                              final viewers = matchedUsers
+                                  .map((user) => user['uid'])
+                                  .toList();
+
+                              final statusData = {
+                                ...buildStatusData(
+                                  url: url,
+                                  caption: caption,
+                                  selectedColor: selectedColor,
+                                  selectedFont: selectedFont,
+                                  textAlign: textAlign,
+                                  highlightMode: highlightMode,
+                                  highlightColor: highlightColor,
+                                ),
+                                'uploadedAt': Timestamp.now(),
+                              };
+
+                              final statusRef = FirebaseFirestore.instance
+                                  .collection('status')
+                                  .doc(uid);
+                              final existingStatus = await statusRef.get();
+
+                              if (existingStatus.exists) {
+                                await statusRef.update({
+                                  'statuses':
+                                      FieldValue.arrayUnion([statusData]),
+                                  'timestamp': Timestamp.now(),
+                                  'viewers': viewers,
+                                });
+                              } else {
+                                await statusRef.set({
+                                  'name': userData['name'] ?? '',
+                                  'phoneNumber': userData['phoneNumber'] ?? '',
+                                  'profileImage':
+                                      userData['profileImage'] ?? '',
+                                  'timestamp': Timestamp.now(),
+                                  'statuses': [statusData],
+                                  'viewers': viewers,
+                                });
+                              }
+                            } catch (e) {
+                              print("❌ Error uploading story: $e");
+                              // You can't show a snackbar now since screen is already popped,
+                              // So optionally you can log it, or show a toast if needed
+                            }
+                          }),
                     ),
                   ),
               ],
@@ -384,7 +623,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => StoryEditorScreen(
-                        file: widget.file,
+                        filePath: widget.filePath,
                         isVideo: widget.isVideo,
                         currentUserId: widget.currentUserId,
                         image: widget.image,
@@ -428,8 +667,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                 : Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (!showEmojiPicker) // ✅ Only show when emoji picker not open
-                        _iconBtn(Icons.music_note, _pickMusic),
+                      // if (!showEmojiPicker) // ✅ Only show when emoji picker not open
+                      //   _iconBtn(Icons.music_note, _pickMusic),
                       if (!showEmojiPicker) // ✅ Only show when emoji picker not open
                         _iconBtn(Icons.crop_rotate_rounded, _cropImage),
                       if (!showEmojiPicker) // ✅ Only show when emoji picker not open
@@ -437,7 +676,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                           setState(() => showEmojiPicker = !showEmojiPicker);
                         }),
                       if (!showEmojiPicker) // ✅ Only show when emoji picker not open
-                        _iconBtn(Icons.text_fields_rounded, _openTextEditor),
+                        _iconBtn(Icons.text_fields_rounded,
+                            () => _openTextEditor(bgImage)),
                       if (!showEmojiPicker) // ✅ Only show when emoji picker not open
                         _iconBtn(Icons.edit, () {
                           _toggleDrawMode();
@@ -517,11 +757,21 @@ class DrawingPainter extends CustomPainter {
 
 class DraggableResizableText extends StatefulWidget {
   final String text;
+  final Color textColor;
+  final String fontFamily;
+  final TextAlign textAlign;
+  final int highlightMode;
+  final Color highlightColor;
   final bool isEmoji;
 
   const DraggableResizableText({
     super.key,
     required this.text,
+    required this.textColor,
+    required this.fontFamily,
+    required this.textAlign,
+    required this.highlightMode,
+    required this.highlightColor,
     this.isEmoji = false,
   });
 
@@ -533,43 +783,182 @@ class _DraggableResizableTextState extends State<DraggableResizableText> {
   Offset position = const Offset(100, 100);
   double scale = 1.0;
   double previousScale = 1.0;
+  Offset initialFocalPoint = Offset.zero;
+  Offset initialPosition = Offset.zero;
+  bool isDragging = false;
+  bool isOverDelete = false;
+  bool isDeleted = false;
+
+  final GlobalKey textKey = GlobalKey(); // ✅ Required for position detection
+
+  // Returns a safe Google Font or fallback
+  TextStyle getSafeGoogleFont(
+    String fontFamily,
+    Color color,
+    double fontSize,
+    Color backgroundColor,
+  ) {
+    try {
+      final fontMap = GoogleFonts.asMap();
+      final normalizedKey = fontFamily.replaceAll(' ', '').toLowerCase();
+      final matchedKey = fontMap.keys.firstWhere(
+        (key) => key.replaceAll(' ', '').toLowerCase() == normalizedKey,
+        orElse: () => 'roboto',
+      );
+
+      return GoogleFonts.getFont(
+        matchedKey,
+      ).copyWith(
+        color: color,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w800,
+        backgroundColor: backgroundColor,
+      );
+    } catch (e) {
+      return TextStyle(
+        color: color,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w800,
+        backgroundColor: backgroundColor,
+      );
+    }
+  }
+
+  // Check if text center is inside delete zone
+  bool isInDeleteZone(Size screenSize) {
+    final renderBox = textKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return false;
+
+    final textPosition = renderBox.localToGlobal(Offset.zero);
+    final textSize = renderBox.size;
+
+    final textCenter = Offset(
+      textPosition.dx + textSize.width / 2,
+      textPosition.dy + textSize.height / 2,
+    );
+
+    const deleteIconSize = 56.0;
+    const deleteIconTop = 100.0;
+    const deleteIconLeft = 10.0;
+
+    return textCenter.dx >= deleteIconLeft &&
+        textCenter.dx <= deleteIconLeft + deleteIconSize &&
+        textCenter.dy >= deleteIconTop &&
+        textCenter.dy <= deleteIconTop + deleteIconSize;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: position.dx,
-      top: position.dy,
-      child: GestureDetector(
-        onScaleStart: (details) {
-          previousScale = scale;
-        },
-        onScaleUpdate: (details) {
-          setState(() {
-            scale = (previousScale * details.scale).clamp(0.5, 4.0);
-            if (details.scale == 1.0) {
-              position += details.focalPointDelta;
-            }
-          });
-        },
-        child: Transform(
-          transform: Matrix4.identity()..scale(scale),
-          alignment: Alignment.center,
-          child: Text(
-            widget.text,
-            style: TextStyle(
-              fontSize: widget.isEmoji ? 40 : 24,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+    if (isDeleted) return const SizedBox(); // Hidden when deleted
+
+    final screenSize = MediaQuery.of(context).size;
+    final backgroundColor =
+        widget.highlightMode == 0 ? Colors.transparent : widget.highlightColor;
+
+    return Stack(
+      children: [
+        // Draggable Text
+        Positioned(
+          left: position.dx,
+          top: position.dy,
+          child: GestureDetector(
+            onScaleStart: (details) {
+              previousScale = scale;
+              initialFocalPoint = details.focalPoint;
+              initialPosition = position;
+              setState(() {
+                isDragging = true;
+              });
+            },
+            onScaleUpdate: (details) {
+              setState(() {
+                scale = previousScale * details.scale;
+                final Offset delta = details.focalPoint - initialFocalPoint;
+                position = initialPosition + delta;
+                isOverDelete = isInDeleteZone(screenSize);
+              });
+            },
+            onScaleEnd: (details) {
+              setState(() {
+                if (isOverDelete) {
+                  print("✅ Text dropped over delete icon.");
+                  isDeleted = true;
+                } else {
+                  print("❌ Not in delete zone.");
+                }
+                isDragging = false;
+                isOverDelete = false;
+              });
+            },
+            child: Transform.scale(
+              scale: scale,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: backgroundColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Container(
+                  key: textKey, // ✅ Needed for accurate delete detection
+                  padding: const EdgeInsets.all(8.0),
+                  constraints: BoxConstraints(
+                    minWidth: 50,
+                    maxWidth: MediaQuery.of(context).size.width - 40,
+                  ),
+                  child: Text(
+                    widget.text,
+                    textAlign: widget.textAlign,
+                    softWrap: true,
+                    maxLines: null,
+                    overflow: TextOverflow.visible,
+                    style: getSafeGoogleFont(
+                      widget.fontFamily,
+                      widget.textColor,
+                      40 * scale,
+                      backgroundColor,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-      ),
+
+        // Delete Icon (only shows while dragging)
+        if (isDragging)
+          Positioned(
+            top: 100,
+            left: 10,
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE90039),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 5,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.delete,
+                size: 28,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
 
 class TextEditorScreen extends StatefulWidget {
-  const TextEditorScreen({super.key});
+  final File bgImage;
+
+  const TextEditorScreen({super.key, required this.bgImage});
 
   @override
   State<TextEditorScreen> createState() => _TextEditorScreenState();
@@ -579,11 +968,17 @@ class _TextEditorScreenState extends State<TextEditorScreen>
     with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  File? bgImage;
 
   Color selectedColor = Colors.white;
   TextAlign textAlign = TextAlign.center;
   String selectedFont = 'Roboto';
+  String typedText = "H"; // Example, replace with your actual text variable
+
+  int highlightMode = 0; // 0 = transparent, 1 = black, 2 = light white
+
+  bool isHighlighted = false;
+
+  bool isTextBackgroundEnabled = false;
 
   final List<String> fonts = [
     'Roboto',
@@ -618,12 +1013,9 @@ class _TextEditorScreenState extends State<TextEditorScreen>
     }
   }
 
-  double hue = 0;
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_focusNode);
     });
@@ -631,246 +1023,295 @@ class _TextEditorScreenState extends State<TextEditorScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose();
     _focusNode.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   Future<bool> _onWillPop() async {
-    if (_focusNode.hasFocus) {
-      _focusNode.unfocus();
-      return false;
-    }
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    Navigator.pop(context);
     return true;
+  }
+
+  Future<void> pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? pickedFile =
+        await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        // You could navigate to a new TextEditorScreen if you want to edit the new image:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => TextEditorScreen(bgImage: File(pickedFile.path)),
+          ),
+        );
+      });
+    } else {
+      print('No image selected.');
+    }
+  }
+
+  Color getHighlightColor() {
+    if (highlightMode == 1) {
+      return Colors.black;
+    } else if (highlightMode == 2) {
+      return Colors.white.withOpacity(0.3); // light white
+    } else {
+      return Colors.transparent;
+    }
+  }
+
+  Alignment getScreenAlignment() {
+    switch (textAlign) {
+      case TextAlign.left:
+        return Alignment.centerLeft;
+      case TextAlign.right:
+        return Alignment.centerRight;
+      case TextAlign.center:
+      default:
+        return Alignment.center;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        children: [
+          // Background image fills full screen behind status bar
+          Positioned.fill(
+            child: Image.file(
+              widget.bgImage,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            ),
+          ),
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: Container(
+              color: const Color.fromARGB(255, 58, 58, 58)
+                  .withOpacity(0.3), // semi-transparent overlay
+            ),
+          ),
+          // Custom AppBar over image
+          SafeArea(
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  // Done button
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    alignment: Alignment.center,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context, {
+                          'text': _controller.text,
+                          'textColor': selectedColor,
+                          'fontFamily': selectedFont,
+                          'textAlign': textAlign,
+                          'highlightMode': highlightMode,
+                          'highlightColor': getHighlightColor(),
+                        });
+                      },
+                      child: const Text(
+                        "Done",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leadingWidth: 90,
-          leading: Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: TextButton(
-              onPressed: () {
-                Navigator.pop(context, {
-                  'text': _controller.text,
-                  'color': selectedColor,
-                  'font': selectedFont,
-                  'align': textAlign,
+                  SizedBox(width: MediaQuery.of(context).size.width / 5),
+
+                  // Align icon
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white24,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.format_align_center,
+                          color: Colors.white, size: 18),
+                      onPressed: () {
+                        setState(() {
+                          textAlign = textAlign == TextAlign.center
+                              ? TextAlign.left
+                              : textAlign == TextAlign.left
+                                  ? TextAlign.right
+                                  : TextAlign.center;
+                        });
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Text background toggle icon
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white24,
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.auto_fix_high,
+                          color: Colors.white, size: 18),
+                      onPressed: () {
+                        setState(() {
+                          highlightMode = (highlightMode + 1) % 3;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Center text field
+          Align(
+            alignment: Alignment.center,
+            child: IntrinsicWidth(
+              child: IntrinsicHeight(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                  decoration: BoxDecoration(
+                    color: getHighlightColor(),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    textAlign: textAlign,
+                    style:
+                        getFontStyle(selectedFont, selectedColor, 40).copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                    cursorColor: selectedColor,
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'Add text',
+                      hintStyle: TextStyle(
+                        color: Color.fromARGB(255, 255, 255, 255),
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Vertical color slider
+          Positioned(
+            right: 20,
+            top: MediaQuery.of(context).size.height * 0.14,
+            child: GestureDetector(
+              onVerticalDragUpdate: (details) {
+                double height = 200;
+                double y = details.localPosition.dy.clamp(0.0, height);
+                setState(() {
+                  if (y < height * 0.2) {
+                    double value = y / (height * 0.2);
+                    selectedColor = HSVColor.fromAHSV(1, 0, 0, value).toColor();
+                  } else {
+                    double hueY = (y - height * 0.2) / (height * 0.8);
+                    double hue = hueY * 360;
+                    selectedColor = HSVColor.fromAHSV(1, hue, 1, 1).toColor();
+                  }
                 });
               },
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                backgroundColor: null,
-              ),
               child: Container(
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                width: 10,
+                height: 200,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  "Done",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.normal,
-                    fontSize: 14,
+                  borderRadius: BorderRadius.circular(40),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black,
+                      Colors.white,
+                      Colors.red,
+                      Colors.orange,
+                      Colors.yellow,
+                      Colors.green,
+                      Colors.cyan,
+                      Colors.blue,
+                      Colors.purple,
+                      Colors.pink,
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-          centerTitle: true,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white24,
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.format_align_center,
-                      color: Colors.white, size: 18),
-                  onPressed: () {
-                    setState(() {
-                      textAlign = textAlign == TextAlign.center
-                          ? TextAlign.left
-                          : textAlign == TextAlign.left
-                              ? TextAlign.right
-                              : TextAlign.center;
-                    });
-                  },
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white24,
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.text_fields,
-                      color: Colors.white, size: 18),
-                  onPressed: () {},
-                ),
-              ),
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: Stack(
-            children: [
-              if (bgImage != null)
-                Positioned.fill(
-                  child: Image.file(
-                    bgImage!,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              Align(
-                alignment: Alignment.center,
-                child: SingleChildScrollView(
-                  reverse: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: MediaQuery.of(context).size.height * 0.6,
-                    ),
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      textAlign: textAlign,
-                      style: getFontStyle(selectedFont, selectedColor, 40)
-                          .copyWith(fontWeight: FontWeight.bold),
-                      cursorColor: selectedColor,
-                      maxLines: null,
-                      keyboardType: TextInputType.multiline,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Add Text',
-                        hintStyle: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 36,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
 
-              // Color Picker
-              Positioned(
-                right: 16,
-                top: MediaQuery.of(context).size.height * 0.04,
-                child: GestureDetector(
-                  onVerticalDragUpdate: (details) {
-                    double height = 200;
-                    double y = details.localPosition.dy.clamp(0.0, height);
-                    setState(() {
-                      if (y < height * 0.2) {
-                        double value = y / (height * 0.2);
-                        selectedColor =
-                            HSVColor.fromAHSV(1, 0, 0, value).toColor();
-                      } else {
-                        double hueY = (y - height * 0.2) / (height * 0.8);
-                        double hue = hueY * 360;
-                        selectedColor =
-                            HSVColor.fromAHSV(1, hue, 1, 1).toColor();
-                      }
-                    });
-                  },
-                  child: Container(
-                    width: 12,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(40),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black,
-                          Colors.white,
-                          Colors.red,
-                          Colors.orange,
-                          Colors.yellow,
-                          Colors.green,
-                          Colors.cyan,
-                          Colors.blue,
-                          Colors.purple,
-                          Colors.pink,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Font picker stays above keyboard
-              Positioned(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 10,
-                left: 0,
-                right: 0,
-                child: SizedBox(
-                  height: 50,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    itemCount: fonts.length,
-                    itemBuilder: (context, index) {
-                      final font = fonts[index];
-                      final isSelected = selectedFont == font;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedFont = font;
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 6),
-                          width: 36,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isSelected
-                                ? Colors.white24
-                                : Colors.transparent,
-                          ),
-                          child: Center(
-                            child: Center(
-                              child: Text(
-                                'Aa',
-                                style: getFontStyle(font, Colors.white, 16),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
+          // Font picker at bottom
+          Positioned(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+            left: 0,
+            right: 0,
+            child: SizedBox(
+              height: 50,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                itemCount: fonts.length,
+                itemBuilder: (context, index) {
+                  final font = fonts[index];
+                  final isSelected = selectedFont == font;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        selectedFont = font;
+                      });
                     },
-                  ),
-                ),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      width: 36,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSelected ? Colors.white24 : Colors.transparent,
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Aa',
+                          style: getFontStyle(font, Colors.white, 16),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

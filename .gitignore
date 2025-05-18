@@ -51,5 +51,8 @@ build/
 .dart_tool/
 .packages
 
+#service message key
+./serviceAccountKey.json
+
 # Android build outputs
 android/app/build/
