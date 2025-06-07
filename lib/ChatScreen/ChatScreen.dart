@@ -91,13 +91,11 @@ class _ChatScreenState extends State<ChatScreen> {
     return digits.length >= 10 ? digits.substring(digits.length - 10) : '';
   }
 
-  /// Marks the latest message in a chat as seen, and ensures the chat appears at the top.
   Future<void> markMessageAsSeenAndSort(String chatId) async {
     final firestore = FirebaseFirestore.instance;
     final chatRef = firestore.collection('chats').doc(chatId);
 
     try {
-      // Fetch the chat with only required fields (lastMessage)
       final chatSnap =
           await chatRef.get(const GetOptions(source: Source.server));
       final chatData = chatSnap.data();
@@ -108,26 +106,22 @@ class _ChatScreenState extends State<ChatScreen> {
       final String messageId = lastMessage['id'];
       final List<dynamic> seenByList = lastMessage['seenBy'] ?? [];
 
-      // Skip if already seen
       if (seenByList.contains(currentUserId)) return;
 
       final batch = firestore.batch();
 
-      // 1. Update 'seenBy' in lastMessage field of chat doc
-      // 2. Reset unread count for current user
       batch.update(chatRef, {
         'lastMessage.seenBy': FieldValue.arrayUnion([currentUserId]),
         'unreadCounts.$currentUserId': 0,
-        'lastUpdated': FieldValue.serverTimestamp(), // For sorting chats
+        'lastUpdated': FieldValue.serverTimestamp(), // ✅ update this
       });
 
-      // 3. Update 'seenBy' inside the actual message doc
       final messageRef = chatRef.collection('messages').doc(messageId);
       batch.update(messageRef, {
         'seenBy': FieldValue.arrayUnion([currentUserId]),
       });
 
-      await batch.commit(); // Atomic write
+      await batch.commit();
     } catch (e) {
       debugPrint("❌ markMessageAsSeenAndSort error: $e");
     }
@@ -341,7 +335,7 @@ class _ChatScreenState extends State<ChatScreen> {
               stream: FirebaseFirestore.instance
                   .collection('chats')
                   .where('participants', arrayContains: currentUserId)
-                  .orderBy('lastMessage.timestamp', descending: true)
+                  .orderBy('lastUpdated', descending: true) // ✅ Use lastUpdated
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -354,7 +348,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 List<QueryDocumentSnapshot> chatDocs = snapshot.data!.docs;
 
-                // Filter and sort by search query
                 if (_searchQuery.isNotEmpty) {
                   chatDocs = filterAndSortChats(
                     query: _searchQuery,
@@ -409,7 +402,6 @@ class _ChatScreenState extends State<ChatScreen> {
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           onTap: () async {
-                            // Mark as seen
                             await FirebaseFirestore.instance
                                 .collection('chats')
                                 .doc(chatDoc.id)
@@ -417,6 +409,8 @@ class _ChatScreenState extends State<ChatScreen> {
                               'lastMessage.seenBy':
                                   FieldValue.arrayUnion([currentUserId]),
                               'unreadCounts.$currentUserId': 0,
+                              'lastUpdated':
+                                  FieldValue.serverTimestamp(), // ✅ Update
                             });
 
                             Navigator.push(
@@ -525,17 +519,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String formatTime(Timestamp timestamp) {
+    final time = timestamp.toDate();
     final now = DateTime.now();
-    final messageTime = timestamp.toDate();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(time.year, time.month, time.day);
 
-    final difference = now.difference(messageTime);
-
-    if (difference.inDays == 0) {
-      return DateFormat.jm().format(messageTime); // e.g., 9:04 AM
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
+    if (messageDay == today) {
+      return DateFormat.jm().format(time); // 5:30 PM
     } else {
-      return DateFormat('dd/MM/yyyy').format(messageTime);
+      return DateFormat('MMM d').format(time); // May 18
     }
   }
 }
