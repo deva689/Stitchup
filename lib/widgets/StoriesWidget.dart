@@ -11,33 +11,19 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stitchup/models/StatusViewScreen.dart';
 import 'package:stitchup/models/buildStatusData.dart';
 import 'package:stitchup/widgets/MyStatusScreen.dart';
 
 class StoriesWidget extends StatefulWidget {
   final String currentUserId;
-  final List<Map<String, dynamic>> contactsWithStories;
-  final File? localPreviewFile;
-  final String? profileImageUrl;
-  final bool isUploading;
-  final double uploadProgress;
-  final List<String> contactUIDs; // <-- Add this line
-  final List<Map<String, dynamic>> stories;
+
   final Function(String userId) onStoryTap;
-  final Map<String, String> localContactNames;
 
   const StoriesWidget({
     super.key,
     required this.currentUserId,
-    required this.contactsWithStories,
-    required this.localPreviewFile,
-    required this.profileImageUrl,
-    required this.isUploading,
-    required this.uploadProgress,
-    required this.contactUIDs,
-    required this.stories,
     required this.onStoryTap,
-    required this.localContactNames,
   });
 
   @override
@@ -64,6 +50,7 @@ class _StoriesWidgetState extends State<StoriesWidget> {
     currentUserId = widget.currentUserId;
     loadProfileImage();
     listenToStoryChanges(); // 🔥 Start real-time listener
+    fetchContactsStories(); // Initial fetch
   }
 
   /// Safe sanitizer to ensure only valid URLs are used
@@ -101,7 +88,6 @@ class _StoriesWidgetState extends State<StoriesWidget> {
     return digits.length >= 10 ? digits.substring(digits.length - 10) : '';
   }
 
-  /// Normalize and fetch local contacts with phone-to-name mapping.
   Future<Map<String, String>> getPhoneToNameMap() async {
     final phoneToName = <String, String>{};
 
@@ -130,7 +116,6 @@ class _StoriesWidgetState extends State<StoriesWidget> {
     return phoneToName;
   }
 
-  /// Fetch stories of the current user and contacts (local + chat users).
   Future<void> fetchContactsStories() async {
     try {
       final firestore = FirebaseFirestore.instance;
@@ -138,103 +123,88 @@ class _StoriesWidgetState extends State<StoriesWidget> {
       final user = auth.currentUser;
       if (user == null) return;
 
-      final now = DateTime.now();
-      final cutoff = now.subtract(const Duration(hours: 24));
-      final currentUid = user.uid;
-      final normalizedMyPhone = normalizePhone(user.phoneNumber ?? '');
-
-      // Step 1: Get all chat partner UIDs
-      final chatSnapshot = await firestore
-          .collection('chats')
-          .where('participants', arrayContains: currentUid)
-          .get();
-
-      final chatPartnerUIDs = chatSnapshot.docs
-          .expand((doc) => List<String>.from(doc['participants']))
-          .where((id) => id != currentUid)
-          .toSet();
-
-      // Step 2: Map local phone numbers to names
+      final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+      final myPhone = normalizePhone(user.phoneNumber ?? '');
       final phoneToNameMap = await getPhoneToNameMap();
 
-      // Step 3: Get all user profiles from Firestore
+      // 🔹 Step 1: Get all users and map normalized phone → uid
       final usersSnapshot = await firestore.collection('users').get();
-      final uidToLocalName = <String, String>{};
       final phoneToUid = <String, String>{};
+      final uidToLocalName = <String, String>{};
 
-      for (var doc in usersSnapshot.docs) {
+      for (final doc in usersSnapshot.docs) {
         final data = doc.data();
         final phone =
             normalizePhone(data['phone'] ?? data['normalizedPhone'] ?? '');
-        if (phone.isNotEmpty && phone != normalizedMyPhone) {
-          phoneToUid[phone] = doc.id;
-          if (phoneToNameMap.containsKey(phone)) {
-            uidToLocalName[doc.id] = phoneToNameMap[phone]!;
-          }
+        if (phone.isNotEmpty && phoneToNameMap.containsKey(phone)) {
+          final uid = doc.id;
+          phoneToUid[phone] = uid;
+          uidToLocalName[uid] = phoneToNameMap[phone]!; // local contact name
         }
       }
 
       final contactUIDs = phoneToUid.values.toSet();
-      final storyUIDs = {...chatPartnerUIDs, ...contactUIDs, currentUid};
+      contactUIDs.add(user.uid); // include self story too
 
-      // Step 4: Check each user’s story status
-      final userStories = <Map<String, dynamic>>[];
+      // 🔹 Step 2: Fetch all story items in last 24 hours
+      final itemsSnap = await firestore
+          .collectionGroup('items')
+          .where('uploadedAt', isGreaterThan: cutoff)
+          .get();
 
-      for (final uid in storyUIDs) {
-        final storySnap = await firestore
-            .collection('stories')
-            .doc(uid)
-            .collection('items')
-            .where('uploadedAt', isGreaterThan: cutoff)
-            .get();
+      final Map<String, Timestamp> latestStoryByUser = {};
 
-        if (storySnap.docs.isNotEmpty) {
-          final latest = storySnap.docs
-              .map((d) => d.data()['uploadedAt'])
-              .whereType<Timestamp>()
-              .reduce((a, b) => a.compareTo(b) > 0 ? a : b);
+      for (final doc in itemsSnap.docs) {
+        final userId = doc.reference.parent.parent?.id;
+        final uploadedAt = doc['uploadedAt'] as Timestamp?;
 
-          userStories.add({'userId': uid, 'uploadedAt': latest});
+        if (userId != null &&
+            uploadedAt != null &&
+            contactUIDs.contains(userId)) {
+          final existing = latestStoryByUser[userId];
+          if (existing == null || uploadedAt.compareTo(existing) > 0) {
+            latestStoryByUser[userId] = uploadedAt;
+          }
         }
       }
 
-      // Step 5: Batch fetch corresponding user profiles
+      // 🔹 Step 3: Batch fetch user info
       final enrichedStories = <Map<String, dynamic>>[];
+      final userIds = latestStoryByUser.keys.toList();
 
-      for (var i = 0; i < userStories.length; i += 10) {
-        final batchIds =
-            userStories.skip(i).take(10).map((e) => e['userId']).toList();
+      for (var i = 0; i < userIds.length; i += 10) {
+        final batch = userIds.skip(i).take(10).toList();
 
-        final usersBatch = await firestore
+        final userBatch = await firestore
             .collection('users')
-            .where(FieldPath.documentId, whereIn: batchIds)
+            .where(FieldPath.documentId, whereIn: batch)
             .get();
 
-        for (final doc in usersBatch.docs) {
-          final data = doc.data();
+        for (final doc in userBatch.docs) {
           final uid = doc.id;
-
+          final data = doc.data();
           enrichedStories.add({
             'userId': uid,
             'username': data['username'] ?? '',
-            'localName': uidToLocalName[uid] ?? '',
+            'localName': uidToLocalName[uid] ?? '', // ✅ local name shown
             'photoUrl': sanitizeUrl(data['profileUrl']),
-            'uploadedAt':
-                userStories.firstWhere((s) => s['userId'] == uid)['uploadedAt'],
+            'uploadedAt': latestStoryByUser[uid],
           });
         }
       }
 
-      // Step 6: Separate current user's story and contact stories
+      // 🔹 Step 4: Separate your story & contacts' stories
       final myStory = enrichedStories.firstWhere(
-        (s) => s['userId'] == currentUid,
+        (e) => e['userId'] == user.uid,
         orElse: () => {},
       );
 
-      final contactStories =
-          enrichedStories.where((s) => s['userId'] != currentUid).toList();
+      final contactStories = enrichedStories
+          .where((e) => e['userId'] != user.uid)
+          .toList()
+        ..sort((a, b) => (b['uploadedAt'] as Timestamp)
+            .compareTo(a['uploadedAt'] as Timestamp));
 
-      // Step 7: Update UI (real-time efficient)
       setState(() {
         contactsWithStories = enrichedStories;
         otherStories = contactStories;
@@ -243,104 +213,93 @@ class _StoriesWidgetState extends State<StoriesWidget> {
             (myStory['uploadedAt'] as Timestamp).toDate().isAfter(cutoff);
       });
     } catch (e) {
-      debugPrint('❌ Error fetching stories: $e');
+      debugPrint("❌ Error fetching contact stories: $e");
     }
   }
 
   void listenToStoryChanges() async {
     final firestore = FirebaseFirestore.instance;
-    final auth = FirebaseAuth.instance;
-    final user = auth.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
-    final normalizedMyPhone = normalizePhone(user.phoneNumber ?? '');
-
+    final myPhone = normalizePhone(user.phoneNumber ?? '');
     final phoneToNameMap = await getPhoneToNameMap();
     final usersSnapshot = await firestore.collection('users').get();
-    final uidToLocalName = <String, String>{};
     final phoneToUid = <String, String>{};
+    final uidToLocalName = <String, String>{};
 
-    for (var doc in usersSnapshot.docs) {
+    for (final doc in usersSnapshot.docs) {
       final data = doc.data();
       final phone =
           normalizePhone(data['phone'] ?? data['normalizedPhone'] ?? '');
-      if (phone.isNotEmpty && phone != normalizedMyPhone) {
+      if (phone.isNotEmpty &&
+          phone != myPhone &&
+          phoneToNameMap.containsKey(phone)) {
         phoneToUid[phone] = doc.id;
-        if (phoneToNameMap.containsKey(phone)) {
-          uidToLocalName[doc.id] = phoneToNameMap[phone]!;
-        }
+        uidToLocalName[doc.id] = phoneToNameMap[phone]!;
       }
     }
 
-    final storyDocRef = firestore.collection('stories');
+    final contactUIDs = phoneToUid.values.toSet()..add(user.uid);
 
-    _storySubscription?.cancel(); // Cancel old listener
-    _storySubscription = storyDocRef.snapshots().listen((_) async {
-      final now = DateTime.now();
-      final cutoff = now.subtract(const Duration(hours: 24));
-      final storyUIDs = phoneToUid.values.toSet()..add(user.uid);
+    _storySubscription?.cancel();
+    _storySubscription = FirebaseFirestore.instance
+        .collectionGroup('items')
+        .where('uploadedAt',
+            isGreaterThan: Timestamp.fromDate(
+                DateTime.now().subtract(const Duration(hours: 24))))
+        .snapshots()
+        .listen((snapshot) async {
+      final Map<String, Timestamp> latestByUser = {};
 
-      final userStories = <Map<String, dynamic>>[];
-
-      for (final uid in storyUIDs) {
-        final storySnap = await firestore
-            .collection('stories')
-            .doc(uid)
-            .collection('items')
-            .where('uploadedAt', isGreaterThan: cutoff)
-            .get();
-
-        if (storySnap.docs.isNotEmpty) {
-          final latest = storySnap.docs
-              .map((d) => d.data()['uploadedAt'])
-              .whereType<Timestamp>()
-              .reduce((a, b) => a.compareTo(b) > 0 ? a : b);
-
-          userStories.add({'userId': uid, 'uploadedAt': latest});
+      for (final doc in snapshot.docs) {
+        final uid = doc.reference.parent.parent?.id;
+        final uploadedAt = doc['uploadedAt'] as Timestamp?;
+        if (uid != null && uploadedAt != null && contactUIDs.contains(uid)) {
+          final current = latestByUser[uid];
+          if (current == null || uploadedAt.compareTo(current) > 0) {
+            latestByUser[uid] = uploadedAt;
+          }
         }
       }
 
-      final enrichedStories = <Map<String, dynamic>>[];
-      for (var i = 0; i < userStories.length; i += 10) {
-        final batchIds =
-            userStories.skip(i).take(10).map((e) => e['userId']).toList();
+      final enriched = <Map<String, dynamic>>[];
+      final uids = latestByUser.keys.toList();
 
+      for (var i = 0; i < uids.length; i += 10) {
+        final batch = uids.skip(i).take(10).toList();
         final usersBatch = await firestore
             .collection('users')
-            .where(FieldPath.documentId, whereIn: batchIds)
+            .where(FieldPath.documentId, whereIn: batch)
             .get();
 
         for (final doc in usersBatch.docs) {
-          final data = doc.data();
           final uid = doc.id;
-
-          enrichedStories.add({
+          final data = doc.data();
+          enriched.add({
             'userId': uid,
             'username': data['username'] ?? '',
             'localName': uidToLocalName[uid] ?? '',
             'photoUrl': sanitizeUrl(data['profileUrl']),
-            'uploadedAt':
-                userStories.firstWhere((s) => s['userId'] == uid)['uploadedAt'],
+            'uploadedAt': latestByUser[uid],
           });
         }
       }
 
-      final myStory = enrichedStories.firstWhere(
-        (s) => s['userId'] == currentUserId,
-        orElse: () => {},
-      );
-
+      final myStory =
+          enriched.firstWhere((e) => e['userId'] == user.uid, orElse: () => {});
       final contactStories =
-          enrichedStories.where((s) => s['userId'] != currentUserId).toList();
+          enriched.where((e) => e['userId'] != user.uid).toList();
 
       if (mounted) {
         setState(() {
-          contactsWithStories = enrichedStories;
+          contactsWithStories = enriched;
           otherStories = contactStories;
           myPhotoUrl = myStory['photoUrl'];
           hasUploadedStory = myStory['uploadedAt'] != null &&
-              (myStory['uploadedAt'] as Timestamp).toDate().isAfter(cutoff);
+              (myStory['uploadedAt'] as Timestamp)
+                  .toDate()
+                  .isAfter(DateTime.now().subtract(const Duration(hours: 24)));
         });
       }
     });
@@ -486,6 +445,48 @@ class _StoriesWidgetState extends State<StoriesWidget> {
     }
   }
 
+  Stream<List<Map<String, dynamic>>> getStoriesStream() {
+    final cutoff = DateTime.now().subtract(Duration(hours: 24));
+
+    return FirebaseFirestore.instance
+        .collectionGroup('items')
+        .where('uploadedAt', isGreaterThan: cutoff)
+        .snapshots()
+        .asyncMap((query) async {
+      final items = query.docs;
+
+      // Extract unique user IDs
+      final userIds = items.map((e) => e.reference.parent.parent!.id).toSet();
+
+      // Batch fetch user data
+      final users = await FirebaseFirestore.instance
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: userIds.toList())
+          .get();
+
+      final uidToUser = {
+        for (var doc in users.docs) doc.id: doc.data(),
+      };
+
+      return userIds.map((uid) {
+        final user = uidToUser[uid];
+        final userStories =
+            items.where((i) => i.reference.parent.parent!.id == uid).toList();
+
+        final latest = userStories
+            .map((e) => e['uploadedAt'] as Timestamp)
+            .reduce((a, b) => a.compareTo(b) > 0 ? a : b);
+
+        return {
+          'userId': uid,
+          'username': user?['username'] ?? '',
+          'photoUrl': user?['profileUrl'] ?? '',
+          'uploadedAt': latest,
+        };
+      }).toList();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -528,7 +529,9 @@ class _StoriesWidgetState extends State<StoriesWidget> {
     return Column(
       children: [
         SizedBox(
-          height: 88,
+          height: MediaQuery.of(context).size.height * 0.10 > 100
+              ? 100
+              : MediaQuery.of(context).size.height * 0.10,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: 1 + otherStories.length,
@@ -632,8 +635,18 @@ class _StoriesWidgetState extends State<StoriesWidget> {
                 child: Column(
                   children: [
                     GestureDetector(
-                      onTap: () =>
-                          openStoryViewer(context, storyUser['userId']),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StatusViewScreen(
+                              statusList: storyUser['statusList'],
+                              userName: storyUser['userName'],
+                              profileImage: storyUser['profileImage'],
+                            ),
+                          ),
+                        );
+                      },
                       child: Container(
                         width: 64,
                         height: 64,

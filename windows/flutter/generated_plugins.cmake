@@ -3,6 +3,8 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  agora_rtc_engine
+  app_links
   cloud_firestore
   connectivity_plus
   emoji_picker_flutter
@@ -12,6 +14,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_storage
   flutter_secure_storage_windows
   geolocator_windows
+  iris_method_channel
   permission_handler_windows
   share_plus
   url_launcher_windows

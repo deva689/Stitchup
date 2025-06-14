@@ -190,8 +190,8 @@ class Orderpage extends StatelessWidget {
                   MaterialPageRoute(builder: (context) => Placeholder()));
               break;
             case 2:
-              Navigator.push(
-                  context, MaterialPageRoute(builder: (context) => Trndx()));
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (context) => Placeholder()));
               break;
             case 3:
               Navigator.push(context,

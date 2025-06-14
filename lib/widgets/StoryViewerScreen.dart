@@ -91,6 +91,14 @@ class _StatusViewScreenState extends State<StatusViewScreen> {
     _startProgressTimer();
   }
 
+  TextAlign _getAlign(dynamic index) {
+    try {
+      return TextAlign.values[index ?? TextAlign.center.index];
+    } catch (e) {
+      return TextAlign.center;
+    }
+  }
+
   void _startProgressTimer() {
     _progressDuration = Duration.zero;
     const tickRate = Duration(milliseconds: 50);
@@ -251,17 +259,25 @@ class _StatusViewScreenState extends State<StatusViewScreen> {
             ),
 
             // Caption
-            if (caption.isNotEmpty)
+            if (status['caption'] != null &&
+                status['caption'].toString().trim().isNotEmpty)
               Positioned(
-                bottom: 90,
-                left: 16,
-                right: 16,
-                child: Text(
-                  caption,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    shadows: [Shadow(blurRadius: 5, color: Colors.black)],
+                bottom: 80,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Text(
+                    status['caption'],
+                    textAlign: _getAlign(status['textAlign']),
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: Colors.white,
+                      fontFamily: status['selectedFont'],
+                      backgroundColor: (status['highlightMode'] == true)
+                          ? Color(status['highlightColor'] ?? 0x00000000)
+                          : Colors.transparent,
+                    ),
                   ),
                 ),
               ),

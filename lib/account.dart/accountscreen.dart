@@ -37,7 +37,6 @@ class _AccountScreenState extends State<AccountScreen> {
   bool isStoryLoading = false;
   bool isStoryUploading = false;
   Map<String, String> localContactNames = {};
-  List<QueryDocumentSnapshot> chatDocs = []; // declared at top of the widget
 
   User? user; // 👈 This is needed!
 
@@ -350,7 +349,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   MaterialPageRoute(builder: (context) => const Homepage()));
               break;
             case 1:
-              Future.delayed(Duration(milliseconds: 10), () {
+              Future.delayed(Duration(milliseconds: 100), () {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -366,7 +365,6 @@ class _AccountScreenState extends State<AccountScreen> {
                       onStoryTap: (userId) => openStoryViewer(userId),
                       localContactNames:
                           localContactNames, // make sure this is defined
-                      chatDocs: chatDocs, // ✅ you must pass this
                     ),
                   ),
                 );
@@ -375,7 +373,7 @@ class _AccountScreenState extends State<AccountScreen> {
               break;
             case 2:
               Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => const Trndx()));
+                  MaterialPageRoute(builder: (context) => const Placeholder()));
               break;
             case 3:
               Navigator.pushReplacement(context,

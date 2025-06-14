@@ -15,6 +15,7 @@ import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:stitchup/models/buildStatusData.dart';
 import 'package:stitchup/models/emoji_overlay.dart';
+import 'package:uuid/uuid.dart';
 
 class StoryEditorScreen extends StatefulWidget {
   final File image;
@@ -51,6 +52,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   List<Map<String, dynamic>> matchedUsers = [];
   bool isLoading = true;
   bool highlightMode = false; // ✅ Correct: false means highlight is off
+  bool get isVideo => widget.isVideo;
 
   File? bgImage; // this is in your state
   File? selectedFile; // For image or video file
@@ -85,11 +87,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       final String text = result['text'] ?? '';
       final Color textColor = result['textColor'] ?? Colors.white;
       final String fontFamily = result['fontFamily'] ?? 'Roboto';
-      final int alignIndex = result['textAlign'] ?? TextAlign.center.index;
       final TextAlign align = result['textAlign'] ?? TextAlign.center;
       final int highlightMode = result['highlightMode'] ?? 0;
       final Color highlightColor =
-          Color(result['highlightColor'] ?? Colors.transparent.value);
+          result['highlightColor'] ?? Colors.transparent;
 
       setState(() {
         overlays.add(
@@ -526,22 +527,19 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                             if (selectedFile == null) return;
 
                             Navigator.of(context)
-                                .pop(); // Immediately pop the screen
+                                .pop(); // Close the editor immediately
 
                             try {
                               final uid =
                                   FirebaseAuth.instance.currentUser!.uid;
 
-                              final userDocSnapshot = await FirebaseFirestore
-                                  .instance
+                              final userDoc = await FirebaseFirestore.instance
                                   .collection('users')
                                   .doc(uid)
                                   .get();
-
-                              final userData = userDocSnapshot.data();
-                              if (userData == null) {
+                              final userData = userDoc.data();
+                              if (userData == null)
                                 throw Exception("User not found");
-                              }
 
                               final extension =
                                   path.extension(selectedFile!.path);
@@ -551,9 +549,11 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                                   .child(
                                       '${DateTime.now().millisecondsSinceEpoch}$extension');
 
+                              // ✅ Upload media
                               await ref.putFile(selectedFile!);
                               final url = await ref.getDownloadURL();
 
+                              // ✅ Match viewers
                               final localNumbers =
                                   await getLocalContactNumbers();
                               final matchedUsers =
@@ -562,46 +562,28 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                                   .map((user) => user['uid'])
                                   .toList();
 
-                              final statusData = {
-                                ...buildStatusData(
-                                  url: url,
-                                  caption: caption,
-                                  selectedColor: selectedColor,
-                                  selectedFont: selectedFont,
-                                  textAlign: textAlign,
-                                  highlightMode: highlightMode,
-                                  highlightColor: highlightColor,
-                                ),
-                                'uploadedAt': Timestamp.now(),
-                              };
-
-                              final statusRef = FirebaseFirestore.instance
+                              // ✅ Save to Firestore (one doc per status)
+                              final statusId = const Uuid().v4(); // unique ID
+                              await FirebaseFirestore.instance
                                   .collection('status')
-                                  .doc(uid);
-                              final existingStatus = await statusRef.get();
+                                  .doc(statusId)
+                                  .set({
+                                'userId': uid,
+                                'statusId': statusId,
+                                'mediaUrl': url,
+                                'isVideo': isVideo,
+                                'timestamp': Timestamp.now(),
+                                'views': [], // initially no views
+                                'viewers': viewers,
+                                'caption': caption, // ✅ include your caption
+                                'userName': userData['name'] ?? '',
+                                'profileImageUrl':
+                                    userData['profileImage'] ?? '',
+                              });
 
-                              if (existingStatus.exists) {
-                                await statusRef.update({
-                                  'statuses':
-                                      FieldValue.arrayUnion([statusData]),
-                                  'timestamp': Timestamp.now(),
-                                  'viewers': viewers,
-                                });
-                              } else {
-                                await statusRef.set({
-                                  'name': userData['name'] ?? '',
-                                  'phoneNumber': userData['phoneNumber'] ?? '',
-                                  'profileImage':
-                                      userData['profileImage'] ?? '',
-                                  'timestamp': Timestamp.now(),
-                                  'statuses': [statusData],
-                                  'viewers': viewers,
-                                });
-                              }
+                              // 🎉 Success!
                             } catch (e) {
-                              print("❌ Error uploading story: $e");
-                              // You can't show a snackbar now since screen is already popped,
-                              // So optionally you can log it, or show a toast if needed
+                              print('❌ Error uploading status: $e');
                             }
                           }),
                     ),
@@ -973,9 +955,8 @@ class _TextEditorScreenState extends State<TextEditorScreen>
   TextAlign textAlign = TextAlign.center;
   String selectedFont = 'Roboto';
   String typedText = "H"; // Example, replace with your actual text variable
-
+  String caption = '';
   int highlightMode = 0; // 0 = transparent, 1 = black, 2 = light white
-
   bool isHighlighted = false;
 
   bool isTextBackgroundEnabled = false;
@@ -1126,6 +1107,7 @@ class _TextEditorScreenState extends State<TextEditorScreen>
                           'textAlign': textAlign,
                           'highlightMode': highlightMode,
                           'highlightColor': getHighlightColor(),
+                          'caption': caption, // ✅ ADD THIS LINE
                         });
                       },
                       child: const Text(

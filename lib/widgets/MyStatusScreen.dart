@@ -8,10 +8,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
-
 import '../models/status_model.dart';
+import '../widgets/story_editor_screen.dart';
 import '../widgets/StoryViewerScreen.dart';
 
 class MyStatusScreen extends StatefulWidget {
@@ -59,33 +58,6 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
     }
   }
 
-  Future<void> uploadStatus(File file, bool isVideo) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    String statusId = const Uuid().v4();
-    String path = 'status/${widget.userId}/$statusId';
-    final ref = FirebaseStorage.instance.ref().child(path);
-
-    UploadTask uploadTask = ref.putFile(file);
-    final snapshot = await uploadTask;
-    final downloadUrl = await snapshot.ref.getDownloadURL();
-
-    StatusModel newStatus = StatusModel(
-      userId: widget.userId,
-      statusId: statusId,
-      mediaUrl: downloadUrl,
-      isVideo: isVideo,
-      timestamp: DateTime.now(),
-      views: [],
-    );
-
-    await FirebaseFirestore.instance
-        .collection('status')
-        .doc(statusId)
-        .set(newStatus.toJson());
-  }
-
   Future<void> pickMedia(bool isVideo) async {
     final picked = await (isVideo
         ? _picker.pickVideo(source: ImageSource.gallery)
@@ -93,7 +65,18 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
 
     if (picked != null) {
       File file = File(picked.path);
-      await uploadStatus(file, isVideo);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StoryEditorScreen(
+            image: file,
+            filePath: file,
+            isVideo: isVideo,
+            currentUserId: widget.userId,
+          ),
+        ),
+      );
     }
   }
 
@@ -130,7 +113,6 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
             title: const Text('Forward'),
             onTap: () {
               Navigator.pop(context);
-              // Implement your forwarding logic here
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Forward clicked')),
               );
@@ -207,7 +189,11 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
 
               return ListTile(
                 leading: CircleAvatar(
-                    backgroundImage: NetworkImage(status.mediaUrl)),
+                  backgroundImage: status.isVideo
+                      ? const AssetImage('assets/video_placeholder.png')
+                          as ImageProvider
+                      : NetworkImage(status.mediaUrl),
+                ),
                 title: Text('${status.views.length} views'),
                 subtitle: Text(timeAgo(status.timestamp)),
                 onTap: () async {
@@ -229,6 +215,7 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
                             'url': status.mediaUrl,
                             'isVideo': status.isVideo,
                             'timestamp': status.timestamp,
+                            'caption': status.caption,
                           }
                         ],
                       ),
@@ -248,15 +235,17 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           FloatingActionButton(
+            heroTag: 'edit_status_fab',
             mini: true,
             backgroundColor: Colors.white,
             child: const Icon(Icons.edit, color: Colors.black),
             onPressed: () {
-              // Optional: Add text status
+              // Optional: Add text status feature
             },
           ),
           const SizedBox(height: 10),
           FloatingActionButton(
+            heroTag: 'camera_upload_fab',
             backgroundColor: Colors.green,
             child: const Icon(Icons.camera_alt),
             onPressed: () {

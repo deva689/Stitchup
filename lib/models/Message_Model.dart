@@ -26,10 +26,10 @@ class MessageModel {
     return MessageModel(
       senderId: map['senderId'] ?? '',
       receiverId: map['receiverId'] ?? '',
-      message: map['message'] ?? '',
-      timestamp: map['timestamp'] != null
+      message: map['text'] ?? '', // <-- FIXED from 'message' to 'text'
+      timestamp: map['timestamp'] != null && map['timestamp'] is Timestamp
           ? (map['timestamp'] as Timestamp).toDate()
-          : DateTime.now(), // fallback if null
+          : DateTime.now(), // fallback if null or wrong format
       isDelivered: map['isDelivered'] ?? false,
       isRead: map['isRead'] ?? false,
       voiceUrl: map['voiceUrl'],
@@ -44,7 +44,7 @@ class MessageModel {
     return {
       'senderId': senderId,
       'receiverId': receiverId,
-      'message': message,
+      'text': message, // <-- FIXED from 'message' to 'text'
       'timestamp': Timestamp.fromDate(timestamp),
       'isDelivered': isDelivered,
       'isRead': isRead,

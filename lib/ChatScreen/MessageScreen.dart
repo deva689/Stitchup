@@ -1,21 +1,17 @@
+// Full WhatsApp-like chat screen with Voice Notes, Emoji Reactions, and Recording Indicator
+
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/message_model.dart';
-
-// Initialize a FirebaseFunctions instance
-final FirebaseFunctions functions = FirebaseFunctions.instance;
 
 class Messagescreen extends StatefulWidget {
   final String chatId;
@@ -24,7 +20,6 @@ class Messagescreen extends StatefulWidget {
   final String profileUrl;
   final String? voiceUrl; // nullable
   final Map<String, String>? reactions; // for emoji reactions
-  final String senderName; // Add this!
 
   const Messagescreen({
     super.key,
@@ -34,7 +29,6 @@ class Messagescreen extends StatefulWidget {
     required this.profileUrl,
     this.voiceUrl,
     this.reactions,
-    required this.senderName, // Add this!
   });
 
   @override
@@ -51,6 +45,7 @@ class _MessagescreenState extends State<Messagescreen>
   late String currentUserId;
   Timer? _offlineTimer;
   bool _isTyping = false;
+  late DateTime timestamp;
 
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   String? _voiceFilePath;
@@ -59,28 +54,10 @@ class _MessagescreenState extends State<Messagescreen>
   @override
   void initState() {
     super.initState();
-
-    // Get current user ID
     currentUserId = _auth.currentUser!.uid;
-
-    // Add lifecycle observer if needed
     WidgetsBinding.instance.addObserver(this);
-
-    // Set user online status
     _setOnline();
-
-    // Mark messages as delivered
     _markMessagesAsDelivered();
-
-    // Save the device token for push notifications
-    _saveDeviceToken();
-
-    // Listen for FCM token refresh and update Firestore
-    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-      _firestore.collection('users').doc(currentUserId).update({
-        'fcmToken': newToken,
-      });
-    });
   }
 
   @override
@@ -160,101 +137,80 @@ class _MessagescreenState extends State<Messagescreen>
 
     final trimmedText = text.trim();
     final currentUserId = FirebaseAuth.instance.currentUser!.uid;
-    final timestamp = FieldValue.serverTimestamp();
+    final chatRef = _firestore.collection('chats').doc(widget.chatId);
+    final messageRef = chatRef.collection('messages').doc();
+    final messageId = messageRef.id;
 
-    try {
-      // 1. Save message to Firestore
-      final messageRef = _firestore
-          .collection('chats')
-          .doc(widget.chatId)
-          .collection('messages')
-          .doc();
+    final messageData = {
+      'id': messageId,
+      'text': trimmedText,
+      'senderId': currentUserId,
+      'receiverId': widget.receiverId,
+      'timestamp': FieldValue.serverTimestamp(),
+      'seenBy': [currentUserId],
+      'isDelivered': false,
+      'isRead': false,
+      'type': 'text',
+    };
 
-      await messageRef.set({
+    // 🔹 Save message
+    await messageRef.set(messageData);
+
+    // 🔹 Fetch actual saved message with timestamp from Firestore
+    final savedMessage = await messageRef.get();
+    final savedTimestamp = savedMessage['timestamp'] as Timestamp?;
+
+    // 🔹 Get chat participants
+    final chatSnapshot = await chatRef.get();
+    List<String> participants = [currentUserId, widget.receiverId];
+    Timestamp? createdAt;
+
+    if (chatSnapshot.exists) {
+      final chatData = chatSnapshot.data()!;
+      participants =
+          List<String>.from(chatData['participants'] ?? participants);
+      createdAt = chatData['createdAt'];
+    }
+
+    // 🔹 Update unread count
+    final Map<String, int> unreadCounts = {};
+    for (final uid in participants) {
+      unreadCounts[uid] = uid == currentUserId ? 0 : 1;
+    }
+
+    // 🔹 Update chat document with actual timestamp
+    await chatRef.set({
+      'participants': participants,
+      'users': participants,
+      'createdAt': createdAt ?? Timestamp.now(),
+      'lastMessage': {
+        'id': messageId,
         'text': trimmedText,
         'senderId': currentUserId,
         'receiverId': widget.receiverId,
-        'message': trimmedText,
-        'timestamp': timestamp,
+        'timestamp': savedTimestamp ?? Timestamp.now(),
         'seenBy': [currentUserId],
+        'isDelivered': false,
         'isRead': false,
-        'isDelivered': true,
-        'reactions': {}, // Initialize empty reactions map
-      });
+        'type': 'text',
+      },
+      'unreadCounts': unreadCounts,
+    }, SetOptions(merge: true));
 
-      // 2. Update lastMessage and unreadCounts in chat doc
-      final chatDoc = _firestore.collection('chats').doc(widget.chatId);
-      final chatSnapshot = await chatDoc.get();
+    // 🔹 UI cleanup
+    _messageController.clear();
+    _updateTypingStatus('');
 
-      if (chatSnapshot.exists) {
-        final chatData = chatSnapshot.data()!;
-        final participants = List<String>.from(chatData['participants'] ?? []);
-        final Map<String, int> newUnreadCounts = {};
-
-        for (final uid in participants) {
-          newUnreadCounts[uid] = uid == currentUserId
-              ? 0
-              : (chatData['unreadCounts']?[uid] ?? 0) + 1;
-        }
-
-        await chatDoc.update({
-          'lastMessage': {
-            'text': trimmedText,
-            'timestamp': timestamp,
-            'senderId': currentUserId,
-            'seenBy': [currentUserId],
-          },
-          'unreadCounts': newUnreadCounts,
-        });
-      }
-
-      // 3. Send Push Notification to receiver if token exists
-      final receiverDoc =
-          await _firestore.collection('users').doc(widget.receiverId).get();
-      final fcmToken = receiverDoc.data()?['fcmToken'];
-
-      if (fcmToken != null && fcmToken.isNotEmpty) {
-        await sendPushNotification(
-          token: fcmToken,
-          title: widget.senderName ?? "New Message",
-          body: trimmedText,
+    // 🔹 Scroll to bottom after UI frame
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
         );
       }
-
-      // 4. Clear input and reset typing status
-      _messageController.clear();
-      _updateTypingStatus('');
-
-      // 5. Scroll chat list to bottom smoothly
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    } catch (e) {
-      debugPrint("Error sending message: $e");
-      // Optionally, show a SnackBar or Toast for the error
-    }
-  }
-
-  Future<void> _saveDeviceToken() async {
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null && currentUserId != null) {
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-        _firestore.collection('users').doc(currentUserId).update({
-          'fcmToken': newToken,
-        });
-      });
-      await _firestore.collection('users').doc(currentUserId).update({
-        'fcmToken': token,
-      });
-    } else {
-      debugPrint("❌ Failed to get FCM token");
-    }
+    });
   }
 
   Future<void> _startRecording() async {
@@ -268,6 +224,7 @@ class _MessagescreenState extends State<Messagescreen>
   }
 
   Future<void> _stopRecordingAndSend() async {
+    final currentUserId = FirebaseAuth.instance.currentUser!.uid;
     await _recorder.stopRecorder();
     setState(() => _isRecording = false);
     _setRecordingStatus(false);
@@ -279,19 +236,53 @@ class _MessagescreenState extends State<Messagescreen>
     await storageRef.putFile(file);
     final voiceUrl = await storageRef.getDownloadURL();
 
-    await _firestore
+    final messageRef = _firestore
         .collection('chats')
         .doc(widget.chatId)
         .collection('messages')
-        .add({
+        .doc();
+
+    final timestamp = FieldValue.serverTimestamp();
+
+    await messageRef.set({
+      'id': messageRef.id,
       'senderId': currentUserId,
       'receiverId': widget.receiverId,
       'message': '',
       'voiceUrl': voiceUrl,
-      'timestamp': DateTime.now(),
-      'isDelivered': false,
-      'isRead': false,
+      'timestamp': timestamp,
+      'seenBy': [currentUserId],
+      'type': 'voice',
     });
+
+    final chatDoc = _firestore.collection('chats').doc(widget.chatId);
+    final chatSnapshot = await chatDoc.get();
+    final chatData = chatSnapshot.data();
+
+    if (chatData != null) {
+      final participants = List<String>.from(chatData['participants'] ?? []);
+      final Map<String, int> newUnreadCounts = {};
+
+      for (final uid in participants) {
+        newUnreadCounts[uid] = uid == currentUserId ? 0 : 1;
+      }
+
+      await chatDoc.set({
+        'participants': participants,
+        'users': participants,
+        'lastMessage': {
+          'id': messageRef.id,
+          'text': '',
+          'voiceUrl': voiceUrl,
+          'timestamp': timestamp,
+          'senderId': currentUserId,
+          'seenBy': [currentUserId],
+          'type': 'voice',
+        },
+        'unreadCounts': newUnreadCounts,
+        'createdAt': chatData['createdAt'] ?? timestamp,
+      }, SetOptions(merge: true));
+    }
   }
 
   String getWhatsAppStatusText({
@@ -364,28 +355,6 @@ class _MessagescreenState extends State<Messagescreen>
     });
   }
 
-  Future<void> sendPushNotification({
-    required String token,
-    required String title,
-    required String body,
-  }) async {
-    try {
-      final callable = functions.httpsCallable('sendPushNotification');
-      final result = await callable.call(<String, dynamic>{
-        'token': token,
-        'title': title,
-        'body': body,
-        'chatId': widget.chatId,
-      });
-
-      if (!(result.data['success'] as bool)) {
-        debugPrint('FCM Function error: ${result.data['error']}');
-      }
-    } catch (e) {
-      debugPrint('Error calling cloud function: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -400,6 +369,7 @@ class _MessagescreenState extends State<Messagescreen>
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 20,
+              backgroundColor: Colors.grey[300],
               backgroundImage: NetworkImage(widget.profileUrl),
             ),
             const SizedBox(width: 12),
@@ -419,18 +389,15 @@ class _MessagescreenState extends State<Messagescreen>
 
                   final userData =
                       snapshot.data!.data() as Map<String, dynamic>;
-
                   final isOnline = userData['isOnline'] ?? false;
                   final lastSeen =
                       (userData['lastSeen'] as Timestamp?)?.toDate();
                   final isTypingTo = userData['isTypingTo'] ?? '';
                   final isRecordingTo = userData['isRecordingTo'] ?? '';
-                  final profilePic = userData['profilePic'] ??
-                      'https://via.placeholder.com/150';
+                  final profilePic = userData['profilePic'] ?? '';
                   final userName = userData['name'] ?? 'Unknown';
 
-                  String statusText = 'Offline';
-
+                  String statusText = 'offline';
                   if (isOnline) {
                     if (isRecordingTo ==
                         FirebaseAuth.instance.currentUser!.uid) {
@@ -439,7 +406,7 @@ class _MessagescreenState extends State<Messagescreen>
                         FirebaseAuth.instance.currentUser!.uid) {
                       statusText = 'typing...';
                     } else {
-                      statusText = 'Online';
+                      statusText = 'online';
                     }
                   } else if (lastSeen != null) {
                     statusText = 'last seen ${_formatLastSeen(lastSeen)}';
@@ -448,21 +415,21 @@ class _MessagescreenState extends State<Messagescreen>
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.receiverName,
-                          style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis),
                       Text(
-                        getWhatsAppStatusText(
-                          isOnline: isOnline,
-                          lastSeen: lastSeen,
-                          isTypingTo: isTypingTo,
-                          isRecordingTo: isRecordingTo,
+                        userName,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
                         ),
-                        style:
-                            const TextStyle(color: Colors.grey, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        statusText,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -472,6 +439,14 @@ class _MessagescreenState extends State<Messagescreen>
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            onPressed: () {
+              // Show popup menu
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -549,7 +524,16 @@ class _MessagescreenState extends State<Messagescreen>
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 6),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          DateFormat('hh:mm a')
+                                              .format(msg.timestamp),
+                                          style: const TextStyle(
+                                              fontSize: 10,
+                                              color: Color.fromARGB(
+                                                  255, 232, 232, 232)),
+                                        ),
+                                        const SizedBox(width: 4),
                                         if (isMe)
                                           Icon(
                                             msg.isRead

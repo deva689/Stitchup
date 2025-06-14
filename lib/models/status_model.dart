@@ -9,6 +9,7 @@ class StatusModel {
   final List<String> views;
   final String? userName; // optional
   final String? profileImageUrl; // optional
+  final String? caption; // ✅ newly added caption field
 
   StatusModel({
     required this.userId,
@@ -19,6 +20,7 @@ class StatusModel {
     required this.views,
     this.userName,
     this.profileImageUrl,
+    this.caption, // ✅ added to constructor
   });
 
   factory StatusModel.fromJson(Map<String, dynamic> json) {
@@ -31,6 +33,7 @@ class StatusModel {
       views: List<String>.from(json['views'] ?? []),
       userName: json['userName'],
       profileImageUrl: json['profileImageUrl'],
+      caption: json['caption'] ?? '', // ✅ safely default to empty string
     );
   }
 
@@ -44,6 +47,7 @@ class StatusModel {
       'views': views,
       if (userName != null) 'userName': userName,
       if (profileImageUrl != null) 'profileImageUrl': profileImageUrl,
+      if (caption != null) 'caption': caption, // ✅ added to map
     };
   }
 }

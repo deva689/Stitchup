@@ -340,7 +340,7 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
                         hintText: '', // real hint from animation
                       ),
-                      style: const TextStyle(fontSize: 14),
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ),
 
@@ -348,7 +348,8 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
                   if (isTextEmpty)
                     Positioned.fill(
                       child: Padding(
-                        padding: const EdgeInsets.only(left: 48, right: 48),
+                        padding: const EdgeInsets.only(
+                            left: 48, right: 48, bottom: 4),
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: Row(
@@ -520,8 +521,8 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
               ),
             );
           } else if (index == 2) {
-            Navigator.push(
-                context, MaterialPageRoute(builder: (_) => const Trndx()));
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const Placeholder()));
           } else if (index == 3) {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const OrderScreen()));

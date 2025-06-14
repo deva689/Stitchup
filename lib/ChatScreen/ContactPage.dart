@@ -16,10 +16,6 @@ class ContactsOnStitchUp extends StatefulWidget {
 class _ContactsOnStitchUpState extends State<ContactsOnStitchUp> {
   List<Map<String, dynamic>> matchedUsers = [];
   bool isLoading = true;
-  final currentUser = FirebaseAuth.instance.currentUser;
-  String senderName = '';
-  String senderId = '';
-  Map<String, dynamic> userData = {};
 
   @override
   void initState() {
@@ -157,12 +153,19 @@ class _ContactsOnStitchUpState extends State<ContactsOnStitchUp> {
                     final chatId = generateChatId(currentUserId, receiverId);
 
                     return ListTile(
-                      leading: profileUrl.isNotEmpty
-                          ? CircleAvatar(
-                              backgroundImage:
-                                  CachedNetworkImageProvider(profileUrl),
-                            )
-                          : const CircleAvatar(child: Icon(Icons.person)),
+                      leading: CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.grey[300],
+                        backgroundImage: profileUrl.isNotEmpty
+                            ? CachedNetworkImageProvider(profileUrl)
+                            : null,
+                        child: profileUrl.isEmpty
+                            ? Text(
+                                (user['name'] ?? 'U')[0].toUpperCase(),
+                                style: const TextStyle(color: Colors.white),
+                              )
+                            : null,
+                      ),
                       title: Text(receiverName),
                       subtitle: Text(user['phone']),
                       onTap: () {
@@ -176,7 +179,6 @@ class _ContactsOnStitchUpState extends State<ContactsOnStitchUp> {
                               receiverId: receiverId,
                               receiverName: receiverName,
                               profileUrl: profileUrl,
-                              senderName: userData['name'] ?? 'Unknown',
                             ),
                           ),
                         );

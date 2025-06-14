@@ -59,10 +59,12 @@ dependencies:
   http: ^1.1.0
   app_settings: ^6.1.1
   settings_ui: ^2.0.2
+  supabase_flutter: ^2.9.1
 
   # OTP & Verification
   pin_code_fields: ^8.0.1
   flutter_otp_text_field: ^1.5.1+1
+  agora_rtc_engine: ^6.5.2
 
   # Contacts & Notifications
   flutter_contacts: ^1.1.9+2
