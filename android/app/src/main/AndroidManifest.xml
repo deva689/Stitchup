@@ -24,6 +24,7 @@
     <!-- Hardware features (MUST be outside <application>) -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />
 
     <!-- Facebook SDK queries -->
     <queries>

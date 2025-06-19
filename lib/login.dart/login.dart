@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:stitchup/login.dart/ProfileInfoScreen.dart';
 import 'package:stitchup/login.dart/otprecieve.dart';
 import 'package:stitchup/login.dart/privacypolicy.dart';
@@ -85,42 +84,42 @@ class _LoginState extends State<Login> {
     }
   }
 
-  Future<void> signInWithGoogle(BuildContext context) async {
-    try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
+  // Future<void> signInWithGoogle(BuildContext context) async {
+  //   try {
+  //     final GoogleSignIn googleSignIn = GoogleSignIn();
 
-      // Force account picker by signing out any previous account
-      await googleSignIn.signOut(); // 🔥 This line is important
+  //     // Force account picker by signing out any previous account
+  //     await googleSignIn.signOut(); // 🔥 This line is important
 
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        // User cancelled the sign-in
-        return;
-      }
+  //     final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+  //     if (googleUser == null) {
+  //       // User cancelled the sign-in
+  //       return;
+  //     }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+  //     final GoogleSignInAuthentication googleAuth =
+  //         await googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+  //     final credential = GoogleAuthProvider.credential(
+  //       accessToken: googleAuth.accessToken,
+  //       idToken: googleAuth.idToken,
+  //     );
 
-      // Firebase Sign-In
-      await FirebaseAuth.instance.signInWithCredential(credential);
+  //     // Firebase Sign-In
+  //     await FirebaseAuth.instance.signInWithCredential(credential);
 
-      // Navigate to Homepage
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => ProfileInfoScreen()),
-      );
-    } catch (e) {
-      print("Error signing in: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sign-in failed. Please try again.')),
-      );
-    }
-  }
+  //     // Navigate to Homepage
+  //     Navigator.pushReplacement(
+  //       context,
+  //       MaterialPageRoute(builder: (context) => ProfileInfoScreen()),
+  //     );
+  //   } catch (e) {
+  //     print("Error signing in: $e");
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Sign-in failed. Please try again.')),
+  //     );
+  //   }
+  // }
 
 // //facebook login
 //   Future<void> signInWithFacebook(BuildContext context) async {
@@ -397,24 +396,24 @@ class _LoginState extends State<Login> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () {
-                      signInWithGoogle(context); // Pass the context here
-                    },
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: Color(0xffffffff),
-                        borderRadius: BorderRadius.circular(2),
-                        image: const DecorationImage(
-                          image: AssetImage('assets/g-logo.png'),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ),
+                  // const SizedBox(height: 8),
+                  // GestureDetector(
+                  //   onTap: () {
+                  //     signInWithGoogle(context); // Pass the context here
+                  //   },
+                  //   child: Container(
+                  //     width: 26,
+                  //     height: 26,
+                  //     decoration: BoxDecoration(
+                  //       color: Color(0xffffffff),
+                  //       borderRadius: BorderRadius.circular(2),
+                  //       image: const DecorationImage(
+                  //         image: AssetImage('assets/g-logo.png'),
+                  //         fit: BoxFit.cover,
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
 
                   // Terms & Conditions
                   Padding(

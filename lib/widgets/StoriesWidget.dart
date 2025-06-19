@@ -338,7 +338,8 @@ class _StoriesWidgetState extends State<StoriesWidget> {
       });
 
       await uploadTask;
-      final downloadUrl = await ref.getDownloadURL();
+      final downloadUrl =
+          await ref.getDownloadURL(); // ✅ No ?updated added manually
 
       final userDoc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();

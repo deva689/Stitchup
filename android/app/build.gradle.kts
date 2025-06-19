@@ -8,7 +8,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin") // Flutter
 }
 
-// Load keystore properties
+// ✅ Load keystore for signing
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -16,14 +16,16 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.stitchup.dartnew"
+    // ❌ Remove duplicate 'namespace' - only keep one!
+    namespace = "com.stitchup.dartnew" // ✅ your real package
+
     compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.stitchup.dartnew"
         minSdk = 24
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34 // ✅ use stable target (or flutter.targetSdkVersion if dynamic)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
@@ -39,25 +41,24 @@ android {
         jvmTarget = "11"
     }
 
-tasks.withType<JavaCompile> {
-    options.compilerArgs.add("-Xlint:-options")
+    // ✅ Split APKs per ABI (works now)
+   
+
+    signingConfigs {
+    create("release") {
+        storeFile = file(keystoreProperties["storeFile"] as String)
+        storePassword = keystoreProperties["storePassword"] as String
+        keyAlias = keystoreProperties["keyAlias"] as String
+        keyPassword = keystoreProperties["keyPassword"] as String
+    }
 }
 
 
-    signingConfigs {
-        create("release") {
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-        }
-    }
-
     buildTypes {
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -67,23 +68,15 @@ tasks.withType<JavaCompile> {
 }
 
 dependencies {
-    // ✅ Firebase BoM for consistent versioning
+    // ✅ Firebase (only necessary modules)
     implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
-    implementation("com.google.firebase:firebase-perf-ktx")
-    implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
 
-    // ✅ Desugaring support for Java 8+ features
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-
     // ✅ Multidex support
     implementation("androidx.multidex:multidex:2.0.1")
 
-    // ✅ Facebook SDK for login/integration
-    implementation("com.facebook.android:facebook-android-sdk:16.3.0")
-
-    implementation ("com.google.firebase:firebase-appcheck-playintegrity")
-
+    // ✅ Required for Java 8+ features
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

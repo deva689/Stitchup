@@ -70,7 +70,7 @@ class _ProfileInfoScreenState extends State<ProfileInfoScreen> {
         final name = data['name'] ?? '';
         nameController.text = name;
 
-        if (url.isNotEmpty && url != cachedUrl) {
+        if (url.isNotEmpty && url != cachedUrl && url.startsWith('http')) {
           await precacheImage(CachedNetworkImageProvider(url), context);
           await prefs.setString('cached_profile_url', url);
           setState(() => profileImageUrl = url);
@@ -121,26 +121,29 @@ class _ProfileInfoScreenState extends State<ProfileInfoScreen> {
           .ref()
           .child('profileImages')
           .child('${user!.uid}.jpg');
-      await ref.putFile(imageFile);
-      final downloadUrl = await ref.getDownloadURL();
-      final bustedUrl =
-          "$downloadUrl?updated=${DateTime.now().millisecondsSinceEpoch}";
 
+      await ref.putFile(imageFile);
+
+      final downloadUrl =
+          await ref.getDownloadURL(); // ✅ Direct valid Firebase URL
+
+      // Save to Firestore via helper
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
-          .set({'profileUrl': bustedUrl}, SetOptions(merge: true));
+          .set({'profileUrl': downloadUrl}, SetOptions(merge: true));
 
-      await precacheImage(CachedNetworkImageProvider(bustedUrl), context);
+      await precacheImage(CachedNetworkImageProvider(downloadUrl), context);
 
       if (!mounted) return;
+
       setState(() {
-        profileImageUrl = bustedUrl;
+        profileImageUrl = downloadUrl;
         localPreviewFile = null;
       });
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('cached_profile_url', bustedUrl);
+      await prefs.setString('cached_profile_url', downloadUrl);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✅ Profile photo updated!')),
@@ -164,13 +167,14 @@ class _ProfileInfoScreenState extends State<ProfileInfoScreen> {
     final normalizedPhone = normalizePhone(phone);
 
     UserModel userData = UserModel(
-        uid: user.uid,
-        name: name,
-        phoneNumber: phone,
-        profilePic: profileUrl,
-        about: "New User",
-        isOnline: true,
-        lastSeen: DateTime.now());
+      uid: user.uid,
+      name: name,
+      phoneNumber: phone,
+      profilePic: profileUrl,
+      about: "New User",
+      isOnline: true,
+      lastSeen: DateTime.now(),
+    );
 
     await FirebaseFirestore.instance
         .collection('users')
@@ -197,16 +201,13 @@ class _ProfileInfoScreenState extends State<ProfileInfoScreen> {
     setState(() => isLoading = true);
 
     try {
-      final normalizedPhone = normalizePhone(user!.phoneNumber ?? '');
-
-      await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
-        'uid': user!.uid,
-        'name': name,
-        'phone': normalizedPhone,
-        'profileUrl': profileImageUrl ?? '',
-      }, SetOptions(merge: true));
+      await saveUserToFirestore(
+        name: name,
+        profileUrl: profileImageUrl ?? '',
+      );
 
       if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const Homepage()),
@@ -269,10 +270,10 @@ class _ProfileInfoScreenState extends State<ProfileInfoScreen> {
                           backgroundImage: localPreviewFile != null
                               ? FileImage(localPreviewFile!)
                               : (profileImageUrl != null &&
-                                      profileImageUrl!.isNotEmpty)
+                                      profileImageUrl!.startsWith('http'))
                                   ? CachedNetworkImageProvider(profileImageUrl!)
                                   : const AssetImage(
-                                          'assets/avatar_placeholder.png')
+                                          'assets/default_avatar.png')
                                       as ImageProvider,
                         ),
                         Positioned(

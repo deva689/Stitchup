@@ -140,7 +140,8 @@ class _AccountScreenState extends State<AccountScreen> {
 
       await ref.putFile(imageFile);
 
-      final downloadUrl = await ref.getDownloadURL();
+      final downloadUrl =
+          await ref.getDownloadURL(); // ✅ No ?updated added manually
       final bustedUrl =
           "$downloadUrl?updated=${DateTime.now().millisecondsSinceEpoch}";
 

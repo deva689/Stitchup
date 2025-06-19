@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:stitchup/ChatScreen/ChatScreen.dart';
 import 'package:stitchup/TRNdX/TRNDX.dart';
 import 'package:stitchup/account.dart/accountscreen.dart';
+import 'package:stitchup/widgets/MyStatusScreen.dart';
 
 class Homepage extends StatefulWidget {
   const Homepage({super.key});
@@ -19,6 +22,30 @@ class Homepage extends StatefulWidget {
 class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final StreamController<List<User>> _controller = StreamController.broadcast();
+  String? profileImageUrl;
+  List<Map<String, dynamic>> contactsWithStories = [];
+  bool isUploading = false;
+  double uploadProgress = 0.0;
+  File? localPreviewFile;
+
+  List<String> yourFetchedContactUIDsFromFirestore = []; // your list of UIDs
+  bool hasUploadedStory = false;
+  String? myPhotoUrl;
+  bool isImageReady = false;
+  List<Map<String, dynamic>> stories = [];
+  bool isStoryLoading = false;
+  bool isStoryUploading = false;
+  Map<String, String> localContactNames = {};
+  late PageController _pageController;
+  int _currentIndex = 0;
+  double _progress = 0.0;
+  Timer? _timer;
+  bool _isPaused = false;
+  Duration _currentDuration = Duration.zero;
+  Duration _progressDuration = Duration.zero;
+  String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+  User? user; // 👈 This is needed!
 
   bool isTextEmpty = true;
   bool _streamBound = false;
@@ -108,6 +135,18 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
       setState(() {
         currentAddress = "Error checking permission: $e";
       });
+    }
+  }
+
+  void openStoryViewer(String userId) {
+    final hasStory = contactsWithStories.any((s) => s['userId'] == userId);
+    if (hasStory) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MyStatusScreen(userId: userId),
+        ),
+      );
     }
   }
 
@@ -517,7 +556,19 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => Placeholder(),
+                builder: (context) => ChatScreen(
+                  currentUserId: user!.uid,
+                  contactsWithStories: contactsWithStories,
+                  localPreviewFile: localPreviewFile,
+                  profileImageUrl: profileImageUrl,
+                  isUploading: isUploading,
+                  uploadProgress: uploadProgress,
+                  contactUIDs: yourFetchedContactUIDsFromFirestore,
+                  stories: stories,
+                  onStoryTap: (userId) => openStoryViewer(userId),
+                  localContactNames:
+                      localContactNames, // make sure this is defined
+                ),
               ),
             );
           } else if (index == 2) {

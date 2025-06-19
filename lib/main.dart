@@ -1,79 +1,82 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:stitchup/splash.dart/stitchupsplash.dart';
 import 'package:stitchup/notifications/firebase_api.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-// ✅ Background message handler - MUST be top level
+// 🔹 Background FCM message handler (must be top-level)
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  print('⏰ Background message: ${message.notification?.title}');
+  debugPrint('⏰ Background message: ${message.notification?.title}');
 }
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Supabase
-  await Supabase.initialize(
-    url: 'https://wndamcfaujomvmyfusjq.supabase.co', // Replace with real URL
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InduZGFtY2ZhdWpvbXZteWZ1c2pxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2NTE1MjEsImV4cCI6MjA2NTIyNzUyMX0.020gmWUxSU35VgQQ2QZ_2BInUl9YwH4144UKfPHF0Pk',
-  );
-
   try {
-    // ✅ Firebase
+    // ✅ Initialize Firebase
     await Firebase.initializeApp();
 
-    // ✅ Background FCM handler registration
+    // ✅ Set up FCM background handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // ✅ Anonymous auth
-    if (FirebaseAuth.instance.currentUser == null) {
+    // ✅ Sign in anonymously if needed
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
       await FirebaseAuth.instance.signInAnonymously();
     }
 
-    // ✅ Permissions
-    await askContactPermission();
+    // ✅ Request Contacts permission
+    await _askContactPermission();
 
-    // ✅ FCM Token Save
-    await saveFCMTokenToUser();
+    // ✅ Activate App Check
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+    );
 
-    // ✅ Local notification setup
+    // ✅ Save FCM token
+    await _saveFCMToken();
+
+    // ✅ Initialize local notification service
     await FirebaseApi().initNotificationService();
   } catch (e, st) {
-    debugPrint('❌ Firebase Init/Auth Error: $e');
+    debugPrint('❌ Firebase init/auth error: $e');
     debugPrint('$st');
   }
 
   runApp(const MyApp());
 }
 
-Future<void> askContactPermission() async {
-  var status = await Permission.contacts.status;
+Future<void> _askContactPermission() async {
+  final status = await Permission.contacts.status;
   if (!status.isGranted) {
     await Permission.contacts.request();
   }
 }
 
-Future<void> saveFCMTokenToUser() async {
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity,
-  );
+Future<void> _saveFCMToken() async {
+  try {
+    final fcmToken = await FirebaseMessaging.instance.getToken();
 
-  final fcmToken = await FirebaseMessaging.instance.getToken();
-
-  if (fcmToken != null) {
-    final userId = FirebaseAuth.instance.currentUser!.uid;
-    await FirebaseFirestore.instance.collection('users').doc(userId).update({
-      'fcmToken': fcmToken,
-    });
-  } else {
-    print("FCM token is null. Check Firebase Messaging setup.");
+    if (fcmToken != null) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'fcmToken': fcmToken,
+        });
+      }
+    } else {
+      debugPrint('❌ Failed to get FCM token');
+    }
+  } catch (e) {
+    debugPrint('❌ Error saving FCM token: $e');
   }
 }
 
