@@ -16,8 +16,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    // ❌ Remove duplicate 'namespace' - only keep one!
-    namespace = "com.stitchup.dartnew" // ✅ your real package
+    namespace = "com.stitchup.dartnew"
 
     compileSdk = 35
     ndkVersion = "27.0.12077973"
@@ -25,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "com.stitchup.dartnew"
         minSdk = 24
-        targetSdk = 34 // ✅ use stable target (or flutter.targetSdkVersion if dynamic)
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
@@ -41,18 +40,14 @@ android {
         jvmTarget = "11"
     }
 
-    // ✅ Split APKs per ABI (works now)
-   
-
     signingConfigs {
-    create("release") {
-        storeFile = file(keystoreProperties["storeFile"] as String)
-        storePassword = keystoreProperties["storePassword"] as String
-        keyAlias = keystoreProperties["keyAlias"] as String
-        keyPassword = keystoreProperties["keyPassword"] as String
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+            storeFile = file(keystoreProperties["storeFile"] as String)
+            storePassword = keystoreProperties["storePassword"] as String
+        }
     }
-}
-
 
     buildTypes {
         getByName("release") {
@@ -68,15 +63,11 @@ android {
 }
 
 dependencies {
-    // ✅ Firebase (only necessary modules)
     implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
 
-    // ✅ Multidex support
     implementation("androidx.multidex:multidex:2.0.1")
-
-    // ✅ Required for Java 8+ features
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

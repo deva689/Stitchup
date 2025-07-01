@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:stitchup/splash.dart/stitchupsplash.dart';
+import 'package:stitchup/screen/account.dart/splash.dart/stitchupsplash.dart';
 import 'package:stitchup/notifications/firebase_api.dart';
 
 // 🔹 Background FCM message handler (must be top-level)
@@ -21,7 +21,7 @@ Future<void> main() async {
     // ✅ Initialize Firebase
     await Firebase.initializeApp();
 
-    // ✅ Set up FCM background handler
+    // ✅ Background FCM handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     // ✅ Sign in anonymously if needed
@@ -33,15 +33,15 @@ Future<void> main() async {
     // ✅ Request Contacts permission
     await _askContactPermission();
 
-    // ✅ Activate App Check
+    // ✅ App Check (for Play Integrity)
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.playIntegrity,
     );
 
-    // ✅ Save FCM token
+    // ✅ Save FCM token to Firestore
     await _saveFCMToken();
 
-    // ✅ Initialize local notification service
+    // ✅ Setup local notifications
     await FirebaseApi().initNotificationService();
   } catch (e, st) {
     debugPrint('❌ Firebase init/auth error: $e');
@@ -61,19 +61,13 @@ Future<void> _askContactPermission() async {
 Future<void> _saveFCMToken() async {
   try {
     final fcmToken = await FirebaseMessaging.instance.getToken();
+    final user = FirebaseAuth.instance.currentUser;
 
-    if (fcmToken != null) {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .update({
-          'fcmToken': fcmToken,
-        });
-      }
-    } else {
-      debugPrint('❌ Failed to get FCM token');
+    if (fcmToken != null && user != null) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({'fcmToken': fcmToken}, SetOptions(merge: true));
     }
   } catch (e) {
     debugPrint('❌ Error saving FCM token: $e');
@@ -85,9 +79,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
+      title: 'StitchUp',
       debugShowCheckedModeBanner: false,
-      home: StitchupSplash(),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+      ),
+      home: const StitchupSplash(), // 🟢 Splash screen entry
     );
   }
 }

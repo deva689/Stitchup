@@ -13,7 +13,6 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
-import 'package:stitchup/models/buildStatusData.dart';
 import 'package:stitchup/models/emoji_overlay.dart';
 import 'package:uuid/uuid.dart';
 

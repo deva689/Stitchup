@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -9,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:stitchup/widgets/video_status_editor.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' hide ImageFormat;
 import '../models/status_model.dart';
 import '../widgets/story_editor_screen.dart';
 import '../widgets/StoryViewerScreen.dart';
@@ -58,7 +62,16 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
     }
   }
 
-  Future<void> pickMedia(bool isVideo) async {
+  Future<Uint8List?> getVideoThumbnail(String videoUrl) async {
+    final uint8list = await VideoThumbnail.thumbnailData(
+      video: videoUrl,
+      maxWidth: 128, // Thumbnail size
+      quality: 50, // Compression quality
+    );
+    return uint8list;
+  }
+
+  Future<void> pickMediaImage(bool isVideo) async {
     final picked = await (isVideo
         ? _picker.pickVideo(source: ImageSource.gallery)
         : _picker.pickImage(source: ImageSource.gallery));
@@ -74,6 +87,29 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
             filePath: file,
             isVideo: isVideo,
             currentUserId: widget.userId,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> pickMediaVideo(bool isVideo) async {
+    final picked = await (isVideo
+        ? _picker.pickVideo(source: ImageSource.gallery)
+        : _picker.pickImage(source: ImageSource.gallery));
+
+    if (picked != null) {
+      File file = File(picked.path);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VideoStatusEditor(
+            isVideo: isVideo,
+            filePath: file,
+            video: file, // ✅ Always pass the file here
+            currentUserId: widget.userId,
+            bgMedia: file,
           ),
         ),
       );
@@ -188,12 +224,30 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
               final docId = docs[index].id;
 
               return ListTile(
-                leading: CircleAvatar(
-                  backgroundImage: status.isVideo
-                      ? const AssetImage('assets/video_placeholder.png')
-                          as ImageProvider
-                      : NetworkImage(status.mediaUrl),
-                ),
+                leading: status.isVideo
+                    ? FutureBuilder<Uint8List?>(
+                        future: getVideoThumbnail(status.mediaUrl),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const CircleAvatar(
+                                child: CircularProgressIndicator());
+                          } else if (snapshot.hasData) {
+                            return CircleAvatar(
+                              backgroundImage: MemoryImage(snapshot.data!),
+                            );
+                          } else {
+                            return const CircleAvatar(
+                              backgroundColor: Colors.black54,
+                              child: Icon(Icons.videocam, color: Colors.white),
+                            );
+                          }
+                        },
+                      )
+                    : CircleAvatar(
+                        backgroundColor: Colors.black54,
+                        backgroundImage: NetworkImage(status.mediaUrl),
+                      ),
                 title: Text('${status.views.length} views'),
                 subtitle: Text(timeAgo(status.timestamp)),
                 onTap: () async {
@@ -258,7 +312,7 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
                       title: const Text('Upload Image'),
                       onTap: () async {
                         Navigator.pop(context);
-                        await pickMedia(false);
+                        await pickMediaImage(false);
                       },
                     ),
                     ListTile(
@@ -266,7 +320,7 @@ class _MyStatusScreenState extends State<MyStatusScreen> {
                       title: const Text('Upload Video'),
                       onTap: () async {
                         Navigator.pop(context);
-                        await pickMedia(true);
+                        await pickMediaVideo(true);
                       },
                     ),
                   ],

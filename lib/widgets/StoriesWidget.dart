@@ -307,6 +307,7 @@ class _StoriesWidgetState extends State<StoriesWidget> {
 
   Future<void> _pickMediaAndUpload(ImageSource source, bool isVideo) async {
     final picker = ImagePicker();
+
     final pickedFile = isVideo
         ? await picker.pickVideo(source: source)
         : await picker.pickImage(source: source);
@@ -402,36 +403,11 @@ class _StoriesWidgetState extends State<StoriesWidget> {
   }
 
   void _showMediaPickerSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo),
-              title: const Text('Pick Image'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickMediaAndUpload(ImageSource.gallery, false);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.videocam),
-              title: const Text('Pick Video'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickMediaAndUpload(ImageSource.gallery, true);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.cancel),
-              title: const Text('Cancel'),
-              onTap: () => Navigator.pop(context),
-            ),
-          ],
-        ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            MyStatusScreen(userId: FirebaseAuth.instance.currentUser!.uid),
       ),
     );
   }
