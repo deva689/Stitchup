@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-class GoogleSignIn extends StatefulWidget {
-  const GoogleSignIn({super.key});
+class googleSignIn extends StatefulWidget {
+  const googleSignIn({super.key});
 
   @override
-  State<GoogleSignIn> createState() => _GoogleSignInState();
+  State<googleSignIn> createState() => _googleSignInState();
 }
 
-class _GoogleSignInState extends State<GoogleSignIn> {
+class _googleSignInState extends State<googleSignIn> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(

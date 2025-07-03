@@ -65,6 +65,9 @@ dependencies:
   video_thumbnail: ^0.5.6
   flutter_secure_storage: ^9.2.4
   http: ^1.4.0
+  material_symbols_icons: ^4.2815.1
+  google_sign_in: ^7.1.0
+  flutter_facebook_auth: ^7.1.2
 
 
 dev_dependencies:

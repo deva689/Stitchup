@@ -1,13 +1,14 @@
 const { ObjectId } = require('mongodb');
 
 class User {
-  constructor(emailOrPhone, otp, roomId = null) {
-    this._id = new ObjectId();                // Optional: unique MongoDB-style ID
-    this.emailOrPhone = emailOrPhone;
-    this.otp = otp;
-    this.roomId = roomId;
-    this.createdAt = new Date();              // Timestamp for OTP creation
-    this.verified = false;                    // Optional: flag after successful OTP verification
+  constructor({ email = null, phone = null, otp = null, roomId = null }) {
+    this._id = new ObjectId();             // MongoDB Object ID
+    this.email = email;                    // Optional email
+    this.phone = phone;                    // Optional phone
+    this.otp = otp;                        // OTP code
+    this.roomId = roomId;                  // Optional chat room ID
+    this.createdAt = new Date();           // When OTP/user was created
+    this.verified = false;                 // Flag for successful OTP login
   }
 }
 

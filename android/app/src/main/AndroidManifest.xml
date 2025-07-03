@@ -79,9 +79,9 @@
             android:value="AIzaSyBGDXy5ERMMbou89SP7NLw3M4MQk_L2olM" />
 
         <!-- Google Sign-In -->
-        <meta-data
-            android:name="com.google.android.gms.auth.api.signin.WebClientId"
-            android:value="551844473887-3ocqkedl0nvn6tuhnoujrlqe27qp3ccu.apps.googleusercontent.com" />
+       <meta-data
+    android:name="com.google.android.gms.auth.api.credentials.ClientId"
+    android:value="551844473887-3ocqkedl0nvn6tuhnoujrlqe27qp3ccu.apps.googleusercontent.com" />
 
         <!-- Facebook SDK -->
         <meta-data

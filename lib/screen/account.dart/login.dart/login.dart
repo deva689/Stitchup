@@ -1,14 +1,12 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/gestures.dart';
 import 'package:http/http.dart' as http;
 import 'package:stitchup/screen/account.dart/login.dart/otprecieve.dart';
 import 'package:stitchup/screen/account.dart/login.dart/privacypolicy.dart';
 import 'package:stitchup/screen/account.dart/login.dart/terms_condition.dart';
-import 'package:flutter/gestures.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -19,16 +17,10 @@ class Login extends StatefulWidget {
 
 class _LoginState extends State<Login> {
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _contactController = TextEditingController();
-  final TextEditingController _otpController = TextEditingController();
   final FirebaseAuth auth = FirebaseAuth.instance;
-  final _storage = const FlutterSecureStorage(); // JWT Secure Storage
-
   String? _verificationId;
   bool isButtonEnabled = false;
   bool isLoading = false;
-  bool otpSent = false;
-  bool loading = false;
 
   @override
   void initState() {
@@ -42,60 +34,55 @@ class _LoginState extends State<Login> {
     });
   }
 
-  Future<void> sendOtp() async {
-    final phone = _contactController.text.trim();
-
-    if (phone.length != 10) {
-      return showError("Enter a valid 10-digit phone number");
-    }
-
-    setState(() => loading = true);
+  void _verifyPhoneNumber() async {
+    setState(() {
+      isLoading = true;
+    });
 
     try {
-      final res = await http.post(
-        Uri.parse("https://salespatner.onrender.com/auth/send-otp"),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"phone": "+91$phone"}),
-      );
+      await auth.verifyPhoneNumber(
+        phoneNumber: "+91${_phoneController.text}",
+        forceResendingToken: null,
+        timeout: const Duration(seconds: 60),
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // For auto verification
+          await auth.signInWithCredential(credential);
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(context, '/home');
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          setState(() {
+            isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Verification Failed: ${e.message}")),
+          );
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          setState(() {
+            isLoading = false;
+            _verificationId = verificationId;
+          });
 
-      if (res.statusCode == 200) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => Otprecieve(
-              phoneNumber: "+91${_phoneController.text.trim()}",
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => Otprecieve(
+                phoneNumber: _phoneController.text,
+                verificationId: verificationId,
+              ),
             ),
-          ),
-        );
-      } else {
-        final error = jsonDecode(res.body)['error'] ?? "Something went wrong";
-        showError(error);
-      }
+          );
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _verificationId = verificationId;
+        },
+      );
     } catch (e) {
-      showError("Network error. Please check your connection.");
+      setState(() {
+        isLoading = false;
+      });
+      print("Error: $e");
     }
-
-    setState(() => loading = false);
-  }
-
-  void showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("❌ $message"),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("✅ $message"),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   // Future<void> signInWithGoogle(BuildContext context) async {
@@ -168,6 +155,35 @@ class _LoginState extends State<Login> {
 //       );
 //     }
 //   }
+
+  Future<void> syncUserWithBackend() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user != null) {
+      final idToken = await user.getIdToken();
+
+      final response = await http.post(
+        Uri.parse('https://salespatner.onrender.com/api/saveUser'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken', // 🔐 Important
+        },
+        body: json.encode({
+          'uid': user.uid,
+          'phone': user.phoneNumber,
+          'name': user.displayName ?? '',
+          'photo': user.photoURL ?? '',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print("✅ Synced with backend: ${response.body}");
+      } else {
+        print(
+            "❌ Backend sync failed: ${response.statusCode} - ${response.body}");
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -316,14 +332,18 @@ class _LoginState extends State<Login> {
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: !loading ? sendOtp : null,
+                    onPressed: (isButtonEnabled && !isLoading)
+                        ? _verifyPhoneNumber
+                        : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          isButtonEnabled ? Colors.black : Colors.grey[300],
+                      backgroundColor: isButtonEnabled && !isLoading
+                          ? Colors.black
+                          : Colors.grey[300],
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(5),
                       ),
+                      elevation: 0,
                     ),
                     child: isLoading
                         ? const SizedBox(
@@ -338,10 +358,14 @@ class _LoginState extends State<Login> {
                         : const Text(
                             'Send OTP',
                             style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w400),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.3,
+                            ),
                           ),
                   ),
                 ),
+
                 SizedBox(
                   height: 256,
                 ),
@@ -408,23 +432,23 @@ class _LoginState extends State<Login> {
                       ],
                     ),
                   ),
-                  // const SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   // GestureDetector(
                   //   onTap: () {
                   //     signInWithGoogle(context); // Pass the context here
                   //   },
-                  //   child: Container(
-                  //     width: 26,
-                  //     height: 26,
-                  //     decoration: BoxDecoration(
-                  //       color: Color(0xffffffff),
-                  //       borderRadius: BorderRadius.circular(2),
-                  //       image: const DecorationImage(
-                  //         image: AssetImage('assets/g-logo.png'),
-                  //         fit: BoxFit.cover,
-                  //       ),
+                  // child: Container(
+                  //   width: 26,
+                  //   height: 26,
+                  //   decoration: BoxDecoration(
+                  //     color: Color(0xffffffff),
+                  //     borderRadius: BorderRadius.circular(2),
+                  //     image: const DecorationImage(
+                  //       image: AssetImage('assets/g-logo.png'),
+                  //       fit: BoxFit.cover,
                   //     ),
                   //   ),
+                  // ),
                   // ),
 
                   // Terms & Conditions

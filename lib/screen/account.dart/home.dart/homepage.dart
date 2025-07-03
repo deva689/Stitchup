@@ -4,11 +4,12 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:stitchup/screen/account.dart/ChatScreen/ChatScreen.dart';
-import 'package:stitchup/screen/account.dart/accountscreen.dart';
+import 'package:stitchup/screen/account.dart/Accountscreen.dart';
 import 'package:stitchup/widgets/MyStatusScreen.dart';
 
 class Homepage extends StatefulWidget {
@@ -68,6 +69,15 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
         isTextEmpty = _searchController.text.isEmpty;
       });
     });
+
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    //     systemNavigationBarColor: Colors.white,
+    //     systemNavigationBarIconBrightness: Brightness.dark,
+    //     statusBarColor: Colors.transparent,
+    //     statusBarIconBrightness: Brightness.dark,
+    //   ));
+    // });
   }
 
   void loadUsers() {
@@ -217,6 +227,7 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
+        bottom: true,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -525,56 +536,6 @@ class _HomepageState extends State<Homepage> with WidgetsBindingObserver {
             ],
           ),
         ),
-      ),
-
-      // Bottom Navigation
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: 0,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: "Store"),
-          BottomNavigationBarItem(icon: Icon(Icons.message), label: "Message"),
-          BottomNavigationBarItem(icon: Icon(Icons.star), label: "TRNDx"),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_bag), label: "Order"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Account"),
-        ],
-        onTap: (index) {
-          if (index == 1) {
-            Navigator.push(
-                context, MaterialPageRoute(builder: (_) => const Homepage()));
-          } else if (index == 1) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ChatScreen(
-                  currentUserId: user!.uid,
-                  contactsWithStories: contactsWithStories,
-                  localPreviewFile: localPreviewFile,
-                  profileImageUrl: profileImageUrl,
-                  isUploading: isUploading,
-                  uploadProgress: uploadProgress,
-                  contactUIDs: yourFetchedContactUIDsFromFirestore,
-                  stories: stories,
-                  onStoryTap: (userId) => openStoryViewer(userId),
-                  localContactNames:
-                      localContactNames, // make sure this is defined
-                ),
-              ),
-            );
-          } else if (index == 2) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const Placeholder()));
-          } else if (index == 3) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const OrderScreen()));
-          } else if (index == 4) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const AccountScreen()));
-          }
-        },
       ),
     );
   }

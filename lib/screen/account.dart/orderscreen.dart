@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:stitchup/screen/account.dart/accountscreen.dart';
-import 'package:stitchup/screen/account.dart/home.dart/homepage.dart';
 
 class Orderpage extends StatelessWidget {
   final List<Map<String, dynamic>> orders = [
@@ -160,50 +158,6 @@ class Orderpage extends StatelessWidget {
             ),
           ],
         ),
-      ),
-
-      // Bottom Navigation Bar
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.grey,
-        iconSize: 24,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Store'),
-          BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Message'),
-          BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'TRNDx'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart), label: 'Order'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.account_circle), label: 'Account'),
-        ],
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.push(
-                  context, MaterialPageRoute(builder: (context) => Homepage()));
-              break;
-            case 1:
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => Placeholder()));
-              break;
-            case 2:
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => Placeholder()));
-              break;
-            case 3:
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => Orderpage()));
-              break;
-            case 4:
-              Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const AccountScreen()));
-              break;
-          }
-        },
       ),
     );
   }

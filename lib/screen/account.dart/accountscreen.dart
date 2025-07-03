@@ -7,11 +7,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:stitchup/screen/account.dart/ChatScreen/ChatScreen.dart';
-import 'package:stitchup/screen/account.dart/TRNdX/TRNDX.dart';
-import 'package:stitchup/screen/account.dart/home.dart/homepage.dart';
 import 'package:stitchup/screen/account.dart/login.dart/login.dart';
-import 'package:stitchup/screen/account.dart/orderscreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stitchup/widgets/MyStatusScreen.dart';
 
@@ -327,67 +323,6 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           const SizedBox(height: 20),
         ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.grey,
-        iconSize: 24,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Store'),
-          BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Message'),
-          BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'TRNDx'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart), label: 'Order'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.account_circle), label: 'Account'),
-        ],
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => const Homepage()));
-              break;
-            case 1:
-              Future.delayed(Duration(milliseconds: 100), () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ChatScreen(
-                      currentUserId: user!.uid,
-                      contactsWithStories: contactsWithStories,
-                      localPreviewFile: localPreviewFile,
-                      profileImageUrl: profileImageUrl,
-                      isUploading: isUploading,
-                      uploadProgress: uploadProgress,
-                      contactUIDs: yourFetchedContactUIDsFromFirestore,
-                      stories: stories,
-                      onStoryTap: (userId) => openStoryViewer(userId),
-                      localContactNames:
-                          localContactNames, // make sure this is defined
-                    ),
-                  ),
-                );
-              });
-
-              break;
-            case 2:
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => const Placeholder()));
-              break;
-            case 3:
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (context) => Orderpage()));
-              break;
-            case 4:
-              Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const AccountScreen()));
-              break;
-          }
-        },
       ),
     );
   }

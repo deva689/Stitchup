@@ -1,176 +1,199 @@
-// import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:stitchup/screen/account.dart/TRNdX/ComposePostScreen.dart';
 
-// class Trndx extends StatefulWidget {
-//   const Trndx({super.key});
+class XFeedScreen extends StatefulWidget {
+  const XFeedScreen({Key? key}) : super(key: key);
 
-//   @override
-//   State<Trndx> createState() => _TrndxState();
-// }
+  @override
+  State<XFeedScreen> createState() => _XFeedScreenState();
+}
 
-// class _TrndxState extends State<Trndx> with TickerProviderStateMixin {
-//   late AnimationController _controller;
-//   bool _isExpanded = false;
+class _XFeedScreenState extends State<XFeedScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  Position? _currentPosition;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-//   final List<_FabItem> fabItems = [
-//     _FabItem(icon: Icons.videocam, label: "Go Live"),
-//     _FabItem(icon: Icons.mic, label: "Spaces"),
-//     _FabItem(icon: Icons.photo, label: "Photos"),
-//     _FabItem(icon: Icons.edit, label: "Post"),
-//   ];
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _getCurrentLocation();
+  }
 
-//   @override
-//   void initState() {
-//     super.initState();
-//     _controller = AnimationController(
-//       duration: const Duration(milliseconds: 300),
-//       vsync: this,
-//     );
-//   }
+  Future<void> _getCurrentLocation() async {
+    LocationPermission permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return;
+    }
 
-//   void _toggleFab() {
-//     setState(() {
-//       _isExpanded = !_isExpanded;
-//       _isExpanded ? _controller.forward() : _controller.reverse();
-//     });
-//   }
+    final position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
 
-//   @override
-//   void dispose() {
-//     _controller.dispose();
-//     super.dispose();
-//   }
+    setState(() {
+      _currentPosition = position;
+    });
+  }
 
-//   Widget _buildAnimatedFabItem(int index, _FabItem item) {
-//     final intervalStart = index * 0.1;
-//     final intervalEnd = intervalStart + 0.5;
+  Stream<List<DocumentSnapshot>> _getPostsStream() {
+    final query = FirebaseFirestore.instance
+        .collection('posts')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
 
-//     final Animation<double> animation = CurvedAnimation(
-//       parent: _controller,
-//       curve: Interval(intervalStart, intervalEnd, curve: Curves.easeOut),
-//     );
+    return query.asyncMap((snapshot) async {
+      if (_tabController.index == 1 || _currentPosition == null) {
+        return snapshot.docs;
+      }
 
-//     return AnimatedBuilder(
-//       animation: animation,
-//       builder: (_, child) {
-//         return Transform.translate(
-//           offset: Offset(0, -animation.value * (65.0 * (index + 1))),
-//           child: Opacity(
-//             opacity: animation.value,
-//             child: Transform.scale(
-//               scale: animation.value,
-//               child: child,
-//             ),
-//           ),
-//         );
-//       },
-//       child: Row(
-//         mainAxisAlignment: MainAxisAlignment.end,
-//         children: [
-//           Container(
-//             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-//             margin: const EdgeInsets.only(right: 10),
-//             decoration: BoxDecoration(
-//               color: Colors.white,
-//               borderRadius: BorderRadius.circular(8),
-//               boxShadow: const [
-//                 BoxShadow(color: Colors.black12, blurRadius: 4),
-//               ],
-//             ),
-//             child: Text(item.label,
-//                 style: const TextStyle(fontWeight: FontWeight.w500)),
-//           ),
-//           FloatingActionButton(
-//             mini: true,
-//             heroTag: item.label,
-//             onPressed: () {},
-//             backgroundColor: Colors.white,
-//             foregroundColor: Colors.black,
-//             child: Icon(item.icon),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
+      // Filter by 10 km using GeoPoint
+      final nearby = snapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data.containsKey('location') && data['location'] is GeoPoint) {
+          final GeoPoint point = data['location'];
+          final distance = Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            point.latitude,
+            point.longitude,
+          );
+          return distance <= 10000; // 10 km
+        }
+        return false;
+      }).toList();
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       backgroundColor: Colors.white,
-//       body: ListView.builder(
-//         itemCount: 10,
-//         padding: const EdgeInsets.all(12),
-//         itemBuilder: (context, index) {
-//           return Card(
-//             margin: const EdgeInsets.symmetric(vertical: 8),
-//             shape: RoundedRectangleBorder(
-//               borderRadius: BorderRadius.circular(16),
-//             ),
-//             elevation: 2,
-//             child: Column(
-//               crossAxisAlignment: CrossAxisAlignment.start,
-//               children: [
-//                 ListTile(
-//                   leading: CircleAvatar(backgroundColor: Colors.grey[300]),
-//                   title: Text("User $index",
-//                       style: const TextStyle(fontWeight: FontWeight.bold)),
-//                   subtitle: const Text("2h ago"),
-//                   trailing: const Icon(Icons.more_vert),
-//                 ),
-//                 Container(
-//                   height: 200,
-//                   width: double.infinity,
-//                   decoration: BoxDecoration(
-//                     color: Colors.grey[300],
-//                     borderRadius: BorderRadius.circular(8),
-//                   ),
-//                   margin: const EdgeInsets.all(12),
-//                 ),
-//                 Padding(
-//                   padding:
-//                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-//                   child: Row(
-//                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-//                     children: const [
-//                       Icon(Icons.favorite_border),
-//                       Icon(Icons.chat_bubble_outline),
-//                       Icon(Icons.repeat),
-//                       Icon(Icons.share),
-//                     ],
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           );
-//         },
-//       ),
-//      floatingActionButton: Stack(
-//   alignment: Alignment.bottomRight,
-//   children: [
-//     ...List.generate(
-//       fabItems.length,
-//       (index) => _buildAnimatedFabItem(
-//         index,
-//         fabItems[index],
-//         heroTag: 'fab_item_$index', // Pass unique tag
-//       ),
-//     ),
-//     FloatingActionButton(
-//       heroTag: 'main_fab', // UNIQUE TAG FOR MAIN FAB
-//       backgroundColor: const Color(0xFFd4ed6e), // Light yellow-green
-//       shape: const CircleBorder(),
-//       onPressed: _toggleFab,
-//       child: Icon(_isExpanded ? Icons.close : Icons.add),
-//     ),
+      return nearby;
+    });
+  }
 
-//         ],
-//       ),
-//     );
-//   }
-// }
+  void _showPostDialog() {
+    final TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Post something"),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: "What's happening?",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final text = controller.text.trim();
+              final user = _auth.currentUser;
+              if (text.isNotEmpty && user != null && _currentPosition != null) {
+                await FirebaseFirestore.instance.collection('posts').add({
+                  'text': text,
+                  'timestamp': Timestamp.now(),
+                  'uid': user.uid,
+                  'location': GeoPoint(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                  ),
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Post"),
+          ),
+        ],
+      ),
+    );
+  }
 
-// class _FabItem {
-//   final IconData icon;
-//   final String label;
+  Widget _buildPostCard(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final text = data['text'] ?? '';
+    final timestamp = data['timestamp'] as Timestamp?;
+    final time = timestamp != null
+        ? TimeOfDay.fromDateTime(timestamp.toDate()).format(context)
+        : 'Unknown time';
 
-//   const _FabItem({required this.icon, required this.label});
-// }
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const CircleAvatar(child: Icon(Icons.person)),
+                const SizedBox(width: 10),
+                Text(
+                  time,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              text,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        elevation: 2,
+        title:
+            const Text("X Feed", style: TextStyle(fontWeight: FontWeight.bold)),
+        bottom: TabBar(
+          controller: _tabController,
+          onTap: (_) => setState(() {}),
+          tabs: const [
+            Tab(text: "10 km"),
+            Tab(text: "India"),
+          ],
+        ),
+      ),
+      body: _currentPosition == null
+          ? const Center(child: CircularProgressIndicator())
+          : StreamBuilder<List<DocumentSnapshot>>(
+              stream: _getPostsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text("No posts available"));
+                }
+
+                final posts = snapshot.data!;
+                return ListView.builder(
+                  itemCount: posts.length,
+                  itemBuilder: (context, index) => _buildPostCard(posts[index]),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ComposePostScreen()),
+          );
+        },
+        backgroundColor: Colors.blueAccent,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}

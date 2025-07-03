@@ -18,10 +18,12 @@ class _StitchupSplashState extends State<StitchupSplash> {
     Timer(
       const Duration(seconds: 2),
       () {
-        if (!mounted) return; // ✅ Prevents Navigator call if widget is disposed
+        if (!mounted) return; // ✅ Good check
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const Wrapped()),
+          MaterialPageRoute(
+              builder: (context) =>
+                  const Wrapped()), // ✅ Switches to next screen
         );
       },
     );

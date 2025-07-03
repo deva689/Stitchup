@@ -1,24 +1,24 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const admin = require("firebase-admin");
 const sendEmail = require("../utils/sendEmail");
-const sendSMS = require("../utils/sendSMS"); // ✅ Twilio-based SMS sender
+const sendSMS = require("../utils/sendSMS"); // Custom SMS utility
 
 const router = express.Router();
 
-// ✅ In-memory OTP store (you should use DB in production)
+// ✅ In-memory OTP store (use DB in production)
 const otpStore = new Map();
 
-// 🔢 Generate a 6-digit OTP
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+// 🔢 6-digit OTP
+const generateOtp = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
 
-// 📧 Detect if input is an email
+// 📧 Check email
 const isEmail = (input) => /\S+@\S+\.\S+/.test(input);
 
 // 📤 Send OTP
 router.post("/send-otp", async (req, res) => {
-  console.log("📥 Received body:", req.body);
-
-const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
+  const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
 
   if (!emailOrPhone) {
     return res.status(400).json({ error: "Missing email or phone ❌" });
@@ -26,7 +26,6 @@ const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
 
   const otp = generateOtp();
 
-  // Store OTP with 5 min expiry
   otpStore.set(emailOrPhone, {
     otp,
     expiresAt: Date.now() + 5 * 60 * 1000,
@@ -34,9 +33,9 @@ const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
 
   try {
     if (isEmail(emailOrPhone)) {
-      await sendEmail(emailOrPhone, otp); // Send via email
+      await sendEmail(emailOrPhone, otp);
     } else {
-      await sendSMS(emailOrPhone, otp); // Send via SMS
+      await sendSMS(emailOrPhone, otp);
     }
 
     console.log(`✅ OTP ${otp} sent to ${emailOrPhone}`);
@@ -47,50 +46,50 @@ const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
   }
 });
 
-// 🔐 Verify OTP & Issue JWT
-router.post("/verify-otp", (req, res) => {
-const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
+// ✅ Verify OTP + Firebase Auth Token + Issue JWT
+router.post("/verify-otp", async (req, res) => {
+  const emailOrPhone = req.body.emailOrPhone || req.body.phone || req.body.email;
   const otp = req.body.otp;
+  const firebaseIdToken = req.body.firebaseIdToken; // 👈 From frontend after Firebase Auth
 
-  if (!emailOrPhone || !otp) {
-    return res.status(400).json({ error: "Missing fields ❌" });
+  if (!firebaseIdToken) {
+    return res.status(401).json({ error: "Missing Firebase token ❌" });
   }
 
-  const otpData = otpStore.get(emailOrPhone);
+  try {
+    // 🔐 Verify Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    const firebaseUid = decodedToken.uid;
+    const phone = decodedToken.phone_number || null;
+    const email = decodedToken.email || null;
 
-  console.log("🧪 Verifying OTP for", emailOrPhone);
-  console.log("📥 Entered:", otp);
-  console.log("📦 Stored:", otpData);
+    console.log("✅ Firebase verified:", firebaseUid);
 
-  if (!otpData) {
-    return res.status(401).json({ error: "OTP not found ❌" });
+    // Optional: If OTP fallback is enabled
+    const otpData = otpStore.get(emailOrPhone);
+    if (!otpData || otpData.otp !== otp || Date.now() > otpData.expiresAt) {
+      return res.status(401).json({ error: "Invalid or expired OTP ❌" });
+    }
+
+    otpStore.delete(emailOrPhone); // 🧹 Clean up used OTP
+
+    // 🎫 Create your own JWT (for app-specific auth)
+    const token = jwt.sign(
+      {
+        uid: firebaseUid,
+        phone,
+        email,
+        role: "partner",
+      },
+      process.env.JWT_SECRET || "your_default_secret",
+      { expiresIn: "1h" }
+    );
+
+    res.json({ token });
+  } catch (err) {
+    console.error("❌ Firebase verification failed:", err);
+    res.status(401).json({ error: "Firebase token invalid ❌" });
   }
-
-  const { otp: storedOtp, expiresAt } = otpData;
-
-  if (Date.now() > expiresAt) {
-    otpStore.delete(emailOrPhone);
-    return res.status(401).json({ error: "OTP expired ⏰" });
-  }
-
-  if (storedOtp !== otp) {
-    return res.status(401).json({ error: "Invalid OTP ❌" });
-  }
-
-  // ✅ OTP verified, issue JWT
-  const token = jwt.sign(
-    {
-      userId: emailOrPhone,
-      role: "partner",
-    },
-    process.env.JWT_SECRET || "default_secret",
-    { expiresIn: "1h" }
-  );
-
-  otpStore.delete(emailOrPhone); // ♻️ Remove used OTP
-  console.log("🎫 JWT Token issued:", token);
-
-  res.json({ token });
 });
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:stitchup/screen/account.dart/home.dart/homepage.dart';
 import 'package:stitchup/screen/account.dart/login.dart/login.dart';
+import 'package:stitchup/screen/mainNavigationScreen.dart';
 
 class Wrapped extends StatefulWidget {
   const Wrapped({super.key});
@@ -13,19 +13,20 @@ class Wrapped extends StatefulWidget {
 class _WrappedState extends State<Wrapped> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: StreamBuilder(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            // snapshot.hasData check pannanum
+    return StreamBuilder(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator()); // Optional loading state
+        }
 
-            return Homepage();
-          } else {
-            return Login();
-          }
-        },
-      ),
+        if (snapshot.hasData) {
+          return const MainNavigationScreen(); // ✅ FIXED HERE
+        } else {
+          return const Login();
+        }
+      },
     );
   }
 }

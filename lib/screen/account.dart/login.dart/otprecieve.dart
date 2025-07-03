@@ -1,17 +1,18 @@
 import 'dart:async';
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_otp_text_field/flutter_otp_text_field.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
 import 'package:stitchup/screen/account.dart/login.dart/ProfileInfoScreen.dart';
 
 class Otprecieve extends StatefulWidget {
   final String phoneNumber;
+  final String verificationId;
 
   const Otprecieve({
     super.key,
     required this.phoneNumber,
+    required this.verificationId,
   });
 
   @override
@@ -19,27 +20,23 @@ class Otprecieve extends StatefulWidget {
 }
 
 class _OtprecieveState extends State<Otprecieve> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   String otp = "";
   bool isButtonEnabled = false;
-  bool loading = false;
+  bool isVerifying = false;
   int countdown = 120;
   Timer? _timer;
-  final _storage = const FlutterSecureStorage();
-
-  final String baseUrl = "https://salespatner.onrender.com"; // your backend
 
   @override
   void initState() {
     super.initState();
-    startCountdown();
+    _startCountdown();
   }
 
-  void startCountdown() {
+  void _startCountdown() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (countdown > 0) {
-        setState(() {
-          countdown--;
-        });
+        setState(() => countdown--);
       } else {
         timer.cancel();
       }
@@ -52,52 +49,55 @@ class _OtprecieveState extends State<Otprecieve> {
     super.dispose();
   }
 
-  void verifyOtp() async {
+  Future<void> _verifyOtp() async {
     if (otp.length != 6) {
-      showError("Please enter the 6-digit OTP");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter a valid 6-digit OTP")),
+      );
       return;
     }
 
-    setState(() => loading = true);
+    setState(() => isVerifying = true);
 
     try {
-      final res = await http.post(
-        Uri.parse("https://salespatner.onrender.com/auth/verify-otp"),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          "emailOrPhone": widget.phoneNumber,
-          "otp": otp,
-        }),
+      final credential = PhoneAuthProvider.credential(
+        verificationId: widget.verificationId,
+        smsCode: otp,
       );
 
-      if (res.statusCode == 200) {
-        final token = jsonDecode(res.body)['token'];
-        await _storage.write(key: "token", value: token);
+      final userCredential = await _auth.signInWithCredential(credential);
+
+      if (userCredential.user != null) {
+        final uid = userCredential.user!.uid;
+        final phone = userCredential.user!.phoneNumber ?? widget.phoneNumber;
+
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'uid': uid,
+          'phoneNumber': phone,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const ProfileInfoScreen()),
+          MaterialPageRoute(builder: (context) => ProfileInfoScreen()),
         );
-      } else {
-        final error = jsonDecode(res.body)['error'] ?? "Invalid OTP";
-        showError(error);
       }
     } catch (e) {
-      showError("Network error. Please try again.");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Invalid OTP: ${e.toString()}")),
+      );
+    } finally {
+      setState(() => isVerifying = false);
     }
-
-    setState(() => loading = false);
-  }
-
-  void showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("❌ $message"), backgroundColor: Colors.red),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final String formattedTimer =
+        "${(countdown ~/ 60).toString().padLeft(2, '0')}:${(countdown % 60).toString().padLeft(2, '0')}";
+
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -112,24 +112,31 @@ class _OtprecieveState extends State<Otprecieve> {
             const SizedBox(height: 24),
             const Text(
               "Verification Code",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xff222222)),
             ),
             const SizedBox(height: 10),
-            Text("Enter the 6-digit OTP sent to your number",
-                style: TextStyle(fontSize: 16, color: Colors.grey[700])),
+            Text(
+              "Please enter the 6-digit code sent to",
+              style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+            ),
             const SizedBox(height: 5),
-            Text(widget.phoneNumber,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xff232323))),
+            Text(
+              widget.phoneNumber,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xff232323)),
+            ),
             const SizedBox(height: 20),
             OtpTextField(
-              autoFocus: true,
               numberOfFields: 6,
               borderColor: Colors.blue,
               focusedBorderColor: Colors.black,
               showFieldAsBox: true,
+              autoFocus: true,
               onSubmit: (code) {
                 setState(() {
                   otp = code;
@@ -139,7 +146,7 @@ class _OtprecieveState extends State<Otprecieve> {
             ),
             const SizedBox(height: 20),
             Text(
-              "Resend OTP in ${countdown ~/ 60}:${(countdown % 60).toString().padLeft(2, '0')}",
+              "Resend OTP in $formattedTimer",
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -151,20 +158,30 @@ class _OtprecieveState extends State<Otprecieve> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: isButtonEnabled && !loading ? verifyOtp : null,
+                onPressed: isButtonEnabled && !isVerifying ? _verifyOtp : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isButtonEnabled ? Colors.black : Colors.grey[300],
+                  backgroundColor: isButtonEnabled && !isVerifying
+                      ? Colors.black
+                      : Colors.grey[300],
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                child: loading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Verify & Login",
+                child: isVerifying
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation(Colors.white),
+                        ),
+                      )
+                    : const Text(
+                        "Verify & Login",
                         style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w400)),
+                            fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
               ),
             ),
           ],

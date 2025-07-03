@@ -16,7 +16,7 @@
 //       final GoogleSignInAuthentication googleAuth =
 //           await googleUser.authentication;
 //       final AuthCredential credential = GoogleAuthProvider.credential(
-//         accessToken: googleAuth.accessToken,
+//         accessToken: googleAuth.idToken,
 //         idToken: googleAuth.idToken,
 //       );
 
