@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:stitchup/screen/account.dart/splash.dart/stitchupsplash.dart';
+import 'package:stitchup/screen/rental_app/splash_screen.dart';
 import 'package:stitchup/notifications/firebase_api.dart';
 
 // 🔹 Background FCM message handler (must be top-level)
@@ -30,8 +30,8 @@ Future<void> main() async {
       await FirebaseAuth.instance.signInAnonymously();
     }
 
-    // ✅ Request Contacts permission
-    await _askContactPermission();
+    // ✅ Request necessary permissions
+    await _requestPermissions();
 
     // ✅ App Check (for Play Integrity)
     await FirebaseAppCheck.instance.activate(
@@ -48,14 +48,16 @@ Future<void> main() async {
     debugPrint('$st');
   }
 
-  runApp(const MyApp());
+  runApp(const RentApp());
 }
 
-Future<void> _askContactPermission() async {
-  final status = await Permission.contacts.status;
-  if (!status.isGranted) {
-    await Permission.contacts.request();
-  }
+Future<void> _requestPermissions() async {
+  await [
+    Permission.contacts,
+    Permission.camera,
+    Permission.storage,
+    Permission.location,
+  ].request();
 }
 
 Future<void> _saveFCMToken() async {
@@ -74,19 +76,70 @@ Future<void> _saveFCMToken() async {
   }
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class RentApp extends StatelessWidget {
+  const RentApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'StitchUp',
+      title: 'RentEase - Studio, Manpower & Equipment Rental',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.white,
+        primarySwatch: MaterialColor(0xFF1565C0, {
+          50: Color(0xFFE3F2FD),
+          100: Color(0xFFBBDEFB),
+          200: Color(0xFF90CAF9),
+          300: Color(0xFF64B5F6),
+          400: Color(0xFF42A5F5),
+          500: Color(0xFF2196F3),
+          600: Color(0xFF1E88E5),
+          700: Color(0xFF1976D2),
+          800: Color(0xFF1565C0),
+          900: Color(0xFF0D47A1),
+        }),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Color(0xFF1565C0),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: Colors.grey[50],
+        appBarTheme: AppBarTheme(
+          backgroundColor: Color(0xFF1565C0),
+          foregroundColor: Colors.white,
+          elevation: 2,
+          titleTextStyle: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(0xFF1565C0),
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        cardTheme: CardTheme(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Color(0xFF1565C0), width: 2),
+          ),
+        ),
+        useMaterial3: true,
       ),
-      home: const StitchupSplash(), // 🟢 Splash screen entry
+      home: const RentalSplashScreen(),
     );
   }
 }
